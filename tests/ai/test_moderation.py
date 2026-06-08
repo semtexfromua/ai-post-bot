@@ -1,6 +1,9 @@
+from unittest.mock import patch
+
 import httpx
 import respx
 
+from app.ai import moderation as moderation_module
 from app.ai.moderation import is_flagged
 
 
@@ -34,3 +37,13 @@ def test_is_flagged_false_when_clean():
         )
     )
     assert is_flagged("звичайна новина про вибори") is False
+
+
+def test_is_flagged_skipped_when_moderation_disabled(monkeypatch):
+    """OpenRouter has no /moderations endpoint; MODERATION_ENABLED=false must skip
+    the call entirely and treat text as clean."""
+    monkeypatch.setattr(moderation_module.settings, "MODERATION_ENABLED", False)
+    with patch.object(moderation_module, "_client") as mock_client:
+        result = is_flagged("anything")
+    mock_client.moderations.create.assert_not_called()
+    assert result is False

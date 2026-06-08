@@ -23,6 +23,8 @@ def test_settings_load_from_env(monkeypatch):
     assert settings.OPENAI_API_KEY.get_secret_value() == "sk-test-123"
     assert settings.OPENAI_MODEL == "gpt-4o-mini"
     assert settings.OPENAI_TIMEOUT == 30
+    assert settings.OPENAI_BASE_URL is None
+    assert settings.MODERATION_ENABLED is True
     assert settings.TELEGRAM_API_ID == 424242
     assert settings.TELEGRAM_API_HASH.get_secret_value() == "hash-abc"
     assert settings.TELETHON_STRING_SESSION.get_secret_value() == "sess-xyz"
@@ -52,6 +54,17 @@ def test_local_with_empty_secrets_does_not_raise(monkeypatch):
     reloaded = importlib.reload(config_module)
     settings = reloaded.Settings()  # must not raise
     assert settings.ENVIRONMENT == "local"
+
+
+def test_openai_base_url_and_moderation_toggle(monkeypatch):
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("MODERATION_ENABLED", "false")
+
+    reloaded = importlib.reload(config_module)
+    settings = reloaded.Settings()
+
+    assert settings.OPENAI_BASE_URL == "https://openrouter.ai/api/v1"
+    assert settings.MODERATION_ENABLED is False
 
 
 def test_secrets_are_not_plain_in_repr(monkeypatch):

@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: SecretStr = SecretStr("")
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_TIMEOUT: int = 30
+    # Optional OpenAI-compatible endpoint (e.g. OpenRouter: https://openrouter.ai/api/v1).
+    # None -> the default OpenAI API.
+    OPENAI_BASE_URL: str | None = None
+    # OpenAI moderation gate. Disable for OpenAI-compatible providers (OpenRouter)
+    # that don't expose a /moderations endpoint.
+    MODERATION_ENABLED: bool = True
 
     TELEGRAM_API_ID: int = 0
     TELEGRAM_API_HASH: SecretStr = SecretStr("")
