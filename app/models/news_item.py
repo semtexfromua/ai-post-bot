@@ -1,10 +1,14 @@
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Uuid
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TZDateTime
+
+if TYPE_CHECKING:
+    from app.models.post import Post
 
 
 class NewsItem(Base):
@@ -21,3 +25,5 @@ class NewsItem(Base):
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime, default=lambda: datetime.now(UTC)
     )
+
+    posts: Mapped[list["Post"]] = relationship(back_populates="news")
