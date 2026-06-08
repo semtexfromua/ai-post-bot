@@ -2,9 +2,19 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+import app.news_parser.telegram_reader as tr
 from app.models.base import SourceType
 from app.news_parser.base import NewsItemData
 from app.news_parser.telegram_reader import TelegramReader
+
+
+@pytest.fixture(autouse=True)
+def clear_entity_cache():
+    tr._entity_cache.clear()
+    yield
+    tr._entity_cache.clear()
 
 
 def _make_source(last_seen=100):

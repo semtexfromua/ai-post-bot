@@ -11,8 +11,9 @@ def content_hash(title: str, url: str | None) -> str:
     """Stable sha256 dedup key over normalized title + url.
 
     Title is casefolded and whitespace-collapsed; url is taken verbatim
-    (None treated as empty string). Components joined with a separator that
-    cannot occur in a normalized title or a URL.
+    (None treated as empty string). Components joined with a
+    null-byte separator (vanishingly unlikely in real titles/URLs)
+    to avoid title|url ambiguity.
     """
     norm_title = _normalize_title(title)
     norm_url = url or ""

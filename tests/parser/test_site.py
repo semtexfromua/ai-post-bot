@@ -72,3 +72,13 @@ def test_site_scraper_non_200_returns_empty_list():
         items = SiteScraper().fetch(src)
     assert items == []
     assert mock_warn.called
+
+
+@respx.mock
+def test_site_scraper_connect_error_returns_empty_list():
+    respx.get("https://example.com/article").mock(
+        side_effect=httpx.ConnectError("connection refused")
+    )
+    src = _make_source()
+    items = SiteScraper().fetch(src)
+    assert items == []

@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
@@ -88,3 +89,34 @@ def test_parse_source_is_noop_on_duplicate_content_hash(db_session):
     rows = db_session.query(NewsItem).filter_by(content_hash=existing_hash).all()
     assert len(rows) == 1  # no duplicate inserted
     mock_chain.assert_not_called()  # no chain for the duplicate
+
+
+def test_parse_source_unknown_source_id_is_noop(db_session):
+    """source is None (random UUID) → returns without error and enqueues no chain."""
+    with (
+        patch.object(pipeline, "SessionLocal", return_value=db_session),
+        patch.object(pipeline, "get_parser") as mock_get_parser,
+        patch.object(pipeline, "chain") as mock_chain,
+    ):
+        pipeline.parse_source(str(uuid.uuid4()))
+
+    mock_get_parser.assert_not_called()
+    mock_chain.assert_not_called()
+
+
+def test_parse_source_disabled_source_is_noop(db_session):
+    """source.enabled == False → no fetch and no chain enqueued."""
+    src = Source(type="site", name="Disabled", url="https://example.com/disabled", enabled=False)
+    db_session.add(src)
+    db_session.commit()
+    db_session.refresh(src)
+
+    with (
+        patch.object(pipeline, "SessionLocal", return_value=db_session),
+        patch.object(pipeline, "get_parser") as mock_get_parser,
+        patch.object(pipeline, "chain") as mock_chain,
+    ):
+        pipeline.parse_source(str(src.id))
+
+    mock_get_parser.assert_not_called()
+    mock_chain.assert_not_called()
