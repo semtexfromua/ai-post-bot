@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     DEDUP_TTL_SECONDS: int = 604800
     KEYWORD_MATCH_MODE: Literal["any", "all"] = "any"
     POST_MAX_LEN: int = 4096
+    # Max items processed per source per parse (newest first). Bounds the first-run
+    # backfill of large feeds and per-cycle volume so generation/publishing can't flood.
+    MAX_ITEMS_PER_PARSE: int = 25
 
     @model_validator(mode="after")
     def _require_secrets_in_prod(self) -> "Settings":

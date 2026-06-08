@@ -58,6 +58,46 @@ def test_parse_source_persists_new_items_and_enqueues_chain(db_session):
     assert mock_chain.return_value.delay.call_count == 2
 
 
+def test_parse_source_caps_to_newest_n(db_session, monkeypatch):
+    """MAX_ITEMS_PER_PARSE bounds a single parse to the newest N items, so a
+    huge feed (or a fresh-DB first run) can't flood generation/publishing."""
+    src = _seed_source(db_session)
+
+    def _dated(title, url, day):
+        return NewsItemData(
+            title=title,
+            url=url,
+            summary="s",
+            source="Example",
+            published_at=datetime(2026, 6, day, tzinfo=UTC),
+            raw_text="b",
+        )
+
+    fake_parser = MagicMock()
+    fake_parser.fetch.return_value = [
+        _dated("d1", "https://example.com/1", 1),
+        _dated("d2", "https://example.com/2", 2),
+        _dated("d3", "https://example.com/3", 3),
+        _dated("d4", "https://example.com/4", 4),
+        _dated("d5", "https://example.com/5", 5),
+    ]
+    monkeypatch.setattr(pipeline.settings, "MAX_ITEMS_PER_PARSE", 2)
+
+    with (
+        patch.object(pipeline, "SessionLocal", return_value=db_session),
+        patch.object(pipeline, "get_parser", return_value=fake_parser),
+        patch.object(pipeline, "chain") as mock_chain,
+        patch.object(pipeline, "filter_item"),
+        patch.object(pipeline, "generate_post"),
+        patch.object(pipeline, "publish_post"),
+    ):
+        pipeline.parse_source(str(src.id))
+
+    titles = {r.title for r in db_session.query(NewsItem).all()}
+    assert titles == {"d4", "d5"}  # only the two newest persisted
+    assert mock_chain.call_count == 2
+
+
 def test_parse_source_is_noop_on_duplicate_content_hash(db_session):
     src = _seed_source(db_session)
     # pre-existing row with the same hash the parser will produce

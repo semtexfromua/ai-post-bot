@@ -262,6 +262,13 @@ def parse_source(source_id: str) -> None:
             parser = get_parser(source)
             items = parser.fetch(source)
 
+            # Cap to the newest N so a huge feed (or a fresh-DB first run) can't
+            # flood downstream generation/publishing.
+            if len(items) > settings.MAX_ITEMS_PER_PARSE:
+                items = sorted(items, key=lambda d: d.published_at, reverse=True)[
+                    : settings.MAX_ITEMS_PER_PARSE
+                ]
+
             for data in items:
                 chash = content_hash(data.title, data.url)
                 # Fast path: skip obvious duplicates without attempting an INSERT.
