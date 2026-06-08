@@ -17,6 +17,7 @@ def test_get_db_yields_session():
 def test_engine_is_sqlite_with_check_same_thread():
     # local default DATABASE_URL is sqlite -> connect_args includes check_same_thread
     assert db.engine.url.get_backend_name() == "sqlite"
-    assert db.engine.dialect.create_connect_args(db.engine.url)[1].get(
-        "check_same_thread"
-    ) is False
+    assert (
+        db.engine.dialect.create_connect_args(db.engine.url)[1].get("check_same_thread")
+        is False
+    )
