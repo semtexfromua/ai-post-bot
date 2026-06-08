@@ -103,6 +103,23 @@ def test_feed_parser_bozo_warns_but_still_parses():
     assert mock_warn.called
 
 
+def test_feed_parser_down_feed_warns():
+    """A persistently unreachable/malformed feed (bozo set, zero entries) must be
+    observable: emit a warning rather than returning [] silently."""
+    down = feedparser.FeedParserDict()
+    down.bozo = 1
+    down.bozo_exception = Exception("name resolution failed")
+    down.entries = []
+    src = _make_source()
+    with (
+        patch("app.news_parser.feed.feedparser.parse", return_value=down),
+        patch("app.news_parser.feed.logger.warning") as mock_warn,
+    ):
+        items = FeedParser().fetch(src)
+    assert items == []
+    assert mock_warn.called
+
+
 def test_feed_parser_atom_uses_updated_when_no_published():
     """Atom entries commonly carry only <updated> (no <published>); use it as the
     publish date instead of stamping the parse moment."""

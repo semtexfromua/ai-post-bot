@@ -49,13 +49,16 @@ class FeedParser(BaseParser):
         if new_modified is not None:
             source.modified = new_modified
 
-        # Only warn about bozo when we actually received entries — an unreachable
-        # host or network error has no entries and should not be mislabelled
-        # "malformed feed".
-        if getattr(parsed, "bozo", 0) and parsed.entries:
+        # Distinguish a malformed-but-readable feed from a down/unreadable one so
+        # neither is silent: bozo + entries is a parse warning; bozo + no entries
+        # is an unreachable/empty feed (otherwise it returns [] with no trace and
+        # never surfaces in logs or /api/v1/errors).
+        if getattr(parsed, "bozo", 0):
+            event = "feed.bozo" if parsed.entries else "feed.unreachable_or_malformed"
             logger.warning(
-                "feed.bozo",
+                event,
                 url=source.url,
+                status=getattr(parsed, "status", None),
                 error=str(getattr(parsed, "bozo_exception", "")),
             )
 
