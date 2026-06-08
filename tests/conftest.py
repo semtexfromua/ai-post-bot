@@ -16,6 +16,7 @@ def db() -> Session:
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
     TestSession = sessionmaker(engine, expire_on_commit=False, class_=Session)

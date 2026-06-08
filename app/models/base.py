@@ -12,9 +12,11 @@ class TZDateTime(TypeDecorator):
     cache_ok = True
 
     def process_bind_param(self, value, dialect):
-        if value is not None and value.tzinfo is not None:
-            return value.astimezone(UTC).replace(tzinfo=None)
-        return value
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError(f"TZDateTime requires a tz-aware datetime, got naive: {value!r}")
+        return value.astimezone(UTC).replace(tzinfo=None)
 
     def process_result_value(self, value, dialect):
         if value is not None:

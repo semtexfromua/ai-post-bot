@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, StatementError
 
 from app.models.news_item import NewsItem
 
@@ -22,13 +22,25 @@ def _item(**kw):
 
 
 def test_create_news_item_row(db):
-    item = _item()
+    original_dt = datetime(2026, 6, 8, tzinfo=UTC)
+    item = _item(published_at=original_dt)
     db.add(item)
     db.commit()
     db.refresh(item)
     assert isinstance(item.id, uuid.UUID)
     assert item.content_hash == "h1"
     assert item.created_at.tzinfo is not None
+    assert item.published_at.tzinfo is not None
+    assert item.published_at == original_dt
+
+
+def test_naive_published_at_raises(db):
+    item = _item(published_at=datetime(2026, 6, 8), content_hash="naive-hash")
+    db.add(item)
+    with pytest.raises(StatementError) as exc_info:
+        db.flush()
+    assert isinstance(exc_info.value.orig, ValueError)
+    assert "tz-aware" in str(exc_info.value.orig)
 
 
 def test_news_item_optional_fields_nullable(db):
