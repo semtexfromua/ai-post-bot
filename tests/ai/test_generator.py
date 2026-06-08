@@ -69,6 +69,43 @@ def test_openai_generator_parses_structured_output():
     assert "вибори" in draft.text.casefold()
 
 
+@respx.mock
+def test_openai_generator_length_finish_raises_clean_valueerror():
+    """A completion truncated by the token cap (finish_reason='length') must
+    surface as a clean ValueError, not an opaque SDK LengthFinishReasonError."""
+    import pytest
+
+    respx.post("https://api.openai.com/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-2",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "gpt-4o-mini",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "length",
+                        "message": {
+                            "role": "assistant",
+                            "content": "truncated...",
+                            "refusal": None,
+                        },
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
+            },
+        )
+    )
+    with pytest.raises(ValueError):
+        OpenAIGenerator().generate(_news())
+
+
 def test_build_generator_returns_fake_when_flagged(monkeypatch):
     monkeypatch.setenv("USE_FAKE_AI", "1")
     gen = build_generator()

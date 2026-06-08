@@ -1,16 +1,23 @@
 import os
 from typing import Protocol
 
+import openai
 from openai import OpenAI
 
 from app.ai.schemas import PostDraft
 from app.core.config import settings
 from app.models.news_item import NewsItem
 
+# Output budget: a Telegram news post should be short, so we ask for a concise
+# post and size max_completion_tokens to fit it comfortably. POST_MAX_LEN (4096)
+# remains the hard Telegram-limit guard enforced downstream — it is NOT the
+# generation target (a 4096-char target would never fit a sane token budget).
+_MAX_COMPLETION_TOKENS = 512
+
 _SYSTEM_PROMPT = (
     "Ти — редактор Telegram-каналу новин. На основі новини напиши лаконічний пост "
     "мовою джерела (uk/ru/en, тією ж, що й новина). Додай доречні емодзі та короткий "
-    f"call-to-action. Довжина суворо не більше {settings.POST_MAX_LEN} символів. "
+    "call-to-action. Пиши стисло: 2–4 речення, орієнтовно до 600 символів. "
     "Поверни структуру: text (готовий пост), language (код мови), hashtags (список)."
 )
 
@@ -39,16 +46,23 @@ class OpenAIGenerator:
     """Structured-output generator via openai chat.completions.parse."""
 
     def generate(self, news: NewsItem) -> PostDraft:
-        completion = _client.chat.completions.parse(
-            model=settings.OPENAI_MODEL,
-            temperature=0.75,
-            max_completion_tokens=280,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": _user_prompt(news)},
-            ],
-            response_format=PostDraft,
-        )
+        try:
+            completion = _client.chat.completions.parse(
+                model=settings.OPENAI_MODEL,
+                temperature=0.75,
+                max_completion_tokens=_MAX_COMPLETION_TOKENS,
+                messages=[
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user", "content": _user_prompt(news)},
+                ],
+                response_format=PostDraft,
+            )
+        except openai.LengthFinishReasonError as exc:
+            # Output hit the token cap before completing — surface a clean,
+            # non-transient failure instead of an opaque SDK exception.
+            raise ValueError(
+                "OpenAI output hit the token limit before completing"
+            ) from exc
         message = completion.choices[0].message
         if getattr(message, "refusal", None) or message.parsed is None:
             raise ValueError("OpenAI refused or returned no parsed output")
