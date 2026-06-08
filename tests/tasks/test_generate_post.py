@@ -1,4 +1,9 @@
 from datetime import UTC, datetime
+from unittest.mock import patch
+
+import openai
+import pytest
+from celery.exceptions import Retry
 
 from app.ai.schemas import PostDraft
 from app.models.base import ErrorStage, PostStatus
@@ -88,3 +93,41 @@ def test_generate_post_moderation_flag_marks_failed_and_logs(db, monkeypatch):
 def test_generate_post_none_input_skips(db, monkeypatch):
     monkeypatch.setattr(pipeline, "SessionLocal", lambda: db_ctx(db))
     assert pipeline.generate_post.run(None) is None
+
+
+class _TransientRateLimit(openai.RateLimitError):
+    """Minimal transient error: openai.RateLimitError needs args we don't want here."""
+
+    def __init__(self):
+        pass
+
+
+class _RaisingGen:
+    def __init__(self, exc):
+        self._exc = exc
+
+    def generate(self, news):
+        raise self._exc
+
+
+def test_generate_post_transient_openai_error_retries_without_creating_post(
+    db, monkeypatch
+):
+    item = _persist_news(db)
+    monkeypatch.setattr(pipeline, "SessionLocal", lambda: db_ctx(db))
+    monkeypatch.setattr(
+        pipeline, "build_generator", lambda: _RaisingGen(_TransientRateLimit())
+    )
+
+    # Patch the bound task's retry to capture the call and short-circuit the
+    # eager retry loop with a Retry sentinel (matches "raise self.retry(...)").
+    sentinel = Retry("retrying")
+    with patch.object(
+        pipeline.generate_post, "retry", side_effect=sentinel
+    ) as mock_retry:
+        with pytest.raises(Retry):
+            pipeline.generate_post.run(str(item.id))
+
+    mock_retry.assert_called_once()
+    # transient error must escalate to retry, not create a Post (no duplicates)
+    assert db.query(Post).count() == 0

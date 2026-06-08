@@ -3,6 +3,7 @@ from __future__ import annotations
 import traceback
 import uuid
 
+import openai
 import redis as redis_lib
 from aiogram.exceptions import (
     TelegramBadRequest,
@@ -32,6 +33,15 @@ from app.telegram import publisher
 LOCK_KEY = "m4:lock:collect"
 LOCK_TTL_SECONDS = 25 * 60  # < beat interval (30m), > a full cycle
 
+# Transient OpenAI failures worth retrying (rate-limit / network / 5xx); a retry
+# must never duplicate a Post, hence generation runs before the Post is created.
+_OPENAI_TRANSIENT = (
+    openai.RateLimitError,
+    openai.APITimeoutError,
+    openai.APIConnectionError,
+    openai.InternalServerError,
+)
+
 
 def get_redis() -> redis_lib.Redis:
     return redis_lib.Redis.from_url(settings.REDIS_URL)
@@ -41,13 +51,17 @@ def _load_keywords(session) -> list[Keyword]:
     return list(session.execute(select(Keyword)).scalars().all())
 
 
-@celery_app.task(name="app.tasks.pipeline.generate_post")
-def generate_post(news_id: str | None) -> str | None:
+@celery_app.task(
+    bind=True, name="app.tasks.pipeline.generate_post", max_retries=5
+)
+def generate_post(self, news_id: str | None) -> str | None:
     """Generate a post for a NewsItem.
 
     None input -> early return (chain stopped upstream).
-    Happy path: generate -> moderation -> length guard -> Post(status=generated).
-    On any failure: Post(status=failed) + ErrorLog(stage=generate). Returns post_id.
+    Generation runs BEFORE the Post row is created so a transient retry can never
+    leave a duplicate Post behind. Transient OpenAI errors -> self.retry. A
+    non-transient generation failure (e.g. refusal) or a moderation/length guard
+    failure -> Post(status=failed) + ErrorLog(stage=generate). Returns post_id.
     """
     if news_id is None:
         return None
@@ -57,13 +71,33 @@ def generate_post(news_id: str | None) -> str | None:
         if item is None:
             return None
 
-        # Explicitly set status=PostStatus.new so the NOT NULL constraint is satisfied.
-        post = Post(news_id=item.id, generated_text="", status=PostStatus.new)
-        session.add(post)
-        session.flush()  # assign post.id for FK/ErrorLog wiring
-
+        # 1) Generate FIRST (no Post row yet) so a transient retry can't duplicate Posts.
         try:
             draft = build_generator().generate(item)
+        except _OPENAI_TRANSIENT as exc:
+            raise self.retry(
+                exc=exc, countdown=2**self.request.retries, max_retries=5
+            )
+        except Exception as exc:  # non-transient generation failure (e.g. refusal)
+            post = Post(news_id=item.id, generated_text="", status=PostStatus.new)
+            session.add(post)
+            session.flush()
+            mark_failed(
+                session,
+                post=post,
+                stage=ErrorStage.generate,
+                message=str(exc),
+                tb=traceback.format_exc(),
+                news_id=item.id,
+            )
+            session.commit()
+            return str(post.id)
+
+        # 2) Generation succeeded -> create the Post and run moderation/length guards.
+        post = Post(news_id=item.id, generated_text="", status=PostStatus.new)
+        session.add(post)
+        session.flush()
+        try:
             text = draft.text
             if is_flagged(text):
                 raise ValueError("moderation flagged generated text")
@@ -76,6 +110,7 @@ def generate_post(news_id: str | None) -> str | None:
                 post=post,
                 stage=ErrorStage.generate,
                 message=str(exc),
+                tb=traceback.format_exc(),
                 news_id=item.id,
             )
         session.commit()
