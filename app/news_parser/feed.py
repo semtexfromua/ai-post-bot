@@ -61,8 +61,11 @@ class FeedParser(BaseParser):
 
         items: list[NewsItemData] = []
         for entry in parsed.entries:
+            # Atom entries often carry only <updated> (updated_parsed) and no
+            # <published>; fall back to it before stamping the parse moment.
             published_at = _struct_time_to_utc(
                 getattr(entry, "published_parsed", None)
+                or getattr(entry, "updated_parsed", None)
             ) or datetime.now(UTC)
             items.append(
                 NewsItemData(

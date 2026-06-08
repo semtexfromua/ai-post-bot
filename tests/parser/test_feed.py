@@ -103,6 +103,31 @@ def test_feed_parser_bozo_warns_but_still_parses():
     assert mock_warn.called
 
 
+def test_feed_parser_atom_uses_updated_when_no_published():
+    """Atom entries commonly carry only <updated> (no <published>); use it as the
+    publish date instead of stamping the parse moment."""
+    atom = """<?xml version="1.0" encoding="utf-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom">
+      <title>Atom Example</title>
+      <entry>
+        <title>Atom story</title>
+        <link href="https://example.com/atom"/>
+        <summary>Atom summary.</summary>
+        <updated>2026-06-01T18:30:02Z</updated>
+      </entry>
+    </feed>"""
+    parsed = feedparser.parse(atom)
+    src = _make_source()
+    with patch("app.news_parser.feed.feedparser.parse", return_value=parsed):
+        items = FeedParser().fetch(src)
+
+    assert len(items) == 1
+    pub = items[0].published_at
+    assert pub.tzinfo == UTC
+    assert (pub.year, pub.month, pub.day) == (2026, 6, 1)
+    assert (pub.hour, pub.minute) == (18, 30)
+
+
 def test_feed_parser_missing_pubdate_falls_back_to_now(monkeypatch):
     no_date_feed = """<?xml version="1.0"?>
     <rss version="2.0"><channel><title>X</title>
