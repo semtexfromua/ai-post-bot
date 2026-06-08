@@ -5,8 +5,24 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import app.models  # noqa: F401  ensures all models register on Base.metadata
 from app.core.db import get_db
 from app.main import app
+from app.models.base import Base
+
+
+@pytest.fixture()
+def db() -> Session:
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    TestSession = sessionmaker(engine, expire_on_commit=False, class_=Session)
+    with TestSession() as session:
+        yield session
+    Base.metadata.drop_all(engine)
+    engine.dispose()
 
 
 @pytest.fixture()

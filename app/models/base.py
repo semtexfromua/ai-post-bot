@@ -1,7 +1,26 @@
 import enum
+from datetime import UTC
 
-from sqlalchemy import MetaData
+from sqlalchemy import DateTime, MetaData, TypeDecorator
 from sqlalchemy.orm import DeclarativeBase
+
+
+class TZDateTime(TypeDecorator):
+    """Store datetimes as UTC; always return tz-aware UTC on read."""
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None and value.tzinfo is not None:
+            return value.astimezone(UTC).replace(tzinfo=None)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            return value.replace(tzinfo=UTC)
+        return value
+
 
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",
