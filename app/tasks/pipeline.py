@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import uuid
 
+import redis as redis_lib
 from celery import chain
+from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.db import SessionLocal
+from app.filter.service import passes_filters
+from app.models.keyword import Keyword
 from app.models.news_item import NewsItem
 from app.models.source import Source
 from app.news_parser.factory import get_parser
@@ -12,17 +17,32 @@ from app.news_parser.hashing import content_hash
 from app.tasks.celery_app import celery_app
 
 
-@celery_app.task
+def _redis() -> redis_lib.Redis:
+    return redis_lib.Redis.from_url(settings.REDIS_URL)
+
+
+def _load_keywords(session) -> list[Keyword]:
+    return list(session.execute(select(Keyword)).scalars().all())
+
+
+@celery_app.task(name="app.tasks.pipeline.generate_post")
 def generate_post(news_id: str | None) -> str | None:
     raise NotImplementedError  # implemented in the AI/generation phase
 
 
-@celery_app.task
+@celery_app.task(name="app.tasks.pipeline.filter_item")
 def filter_item(news_id: str) -> str | None:
-    raise NotImplementedError  # stub — completed in the filter phase
+    """Run filter gate. Returns news_id to continue the chain, or None to stop."""
+    with SessionLocal() as session:
+        item = session.get(NewsItem, uuid.UUID(news_id))
+        if item is None:
+            return None
+        keywords = _load_keywords(session)
+        ok = passes_filters(item, keywords, _redis(), settings)
+        return news_id if ok else None
 
 
-@celery_app.task
+@celery_app.task(name="app.tasks.pipeline.publish_post")
 def publish_post(post_id: str | None) -> None:
     raise NotImplementedError  # stub — completed in the publish phase
 
