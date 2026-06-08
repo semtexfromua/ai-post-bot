@@ -153,7 +153,7 @@ docker compose up --build
 |---|---|
 | `http://localhost:8000/docs` | Swagger UI |
 | `http://localhost:8000/health` | Health check |
-| `http://localhost:5555` | Flower (черги) |
+| `http://localhost:5555` | Flower (черги) — див. примітку нижче |
 
 ---
 
@@ -430,6 +430,14 @@ aiogram — офіційний Bot API для публікації (значно
 Наразі реалізовано **точний** дедуп по `content_hash` (SHA1 нормалізованого заголовка + URL)
 та Redis seen-set. Семантичний near-dup (SimHash / vector similarity) залишений для майбутнього:
 потребує тюнінгу порогу на реальних даних, ризик хибних дропів схожих, але різних новин.
+
+### Flower-дашборд і Celery 5.6
+
+Остання реліз-версія Flower (`2.0.1`) має upstream-несумісність із Celery 5.6:
+сервіс стартує й підключається до брокера, але web-UI на `:5555` зависає (без помилки).
+Це **не впливає** на роботу пайплайну — лише на дашборд. Моніторинг наразі — через логи:
+`docker compose logs -f worker-default worker-tg beat`. Якщо потрібен саме дашборд —
+тимчасово запінити `celery>=5.4,<5.5` (де Flower 2.0.1 працює) або взяти Flower із git.
 
 ### Telethon архівований (лют. 2026)
 
