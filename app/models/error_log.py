@@ -12,9 +12,9 @@ class ErrorLog(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     created_at: Mapped[datetime] = mapped_column(
-        TZDateTime, default=lambda: datetime.now(UTC)
+        TZDateTime, default=lambda: datetime.now(UTC), index=True
     )
-    stage: Mapped[ErrorStage]
+    stage: Mapped[ErrorStage] = mapped_column(index=True)
     source_id: Mapped[uuid.UUID | None]
     news_id: Mapped[uuid.UUID | None]
     post_id: Mapped[uuid.UUID | None]

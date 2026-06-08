@@ -12,9 +12,9 @@ class Post(Base):
     __tablename__ = "posts"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    news_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("news_items.id"))
+    news_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("news_items.id"), index=True)
     generated_text: Mapped[str]
-    status: Mapped[PostStatus] = mapped_column(default=PostStatus.new)
+    status: Mapped[PostStatus] = mapped_column(default=PostStatus.new, index=True)
     published_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
     tg_message_id: Mapped[int | None]
     error: Mapped[str | None]

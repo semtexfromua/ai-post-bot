@@ -1,6 +1,9 @@
 import uuid
 from datetime import UTC, datetime
 
+import pytest
+from sqlalchemy.exc import IntegrityError
+
 from app.models.base import SourceType
 from app.models.source import Source
 
@@ -35,3 +38,11 @@ def test_source_enabled_defaults_true(db):
     db.commit()
     db.refresh(src)
     assert src.enabled is True
+
+
+def test_source_url_unique(db):
+    db.add(Source(type=SourceType.site, name="A", url="https://dup.example"))
+    db.commit()
+    db.add(Source(type=SourceType.site, name="B", url="https://dup.example"))
+    with pytest.raises(IntegrityError):
+        db.commit()

@@ -103,3 +103,6 @@ def downgrade() -> None:
     op.drop_table("news_items")
     op.drop_table("keywords")
     op.drop_table("error_logs")
+    bind = op.get_bind()
+    for enum_name in ("poststatus", "sourcetype", "errorstage"):
+        sa.Enum(name=enum_name).drop(bind, checkfirst=True)
