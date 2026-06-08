@@ -29,17 +29,18 @@ def _text_lemmas_lang(text: str, morph: pymorphy3.MorphAnalyzer) -> set[str]:
     return out
 
 
-def _keyword_lemma(word: str, lang: str | None) -> str:
-    """Normal form of the first token in *word* using the appropriate analyzer."""
-    tokens = _TOKEN_RE.findall(word.casefold())
-    if not tokens:
-        return word.casefold()
-    first = tokens[0]
+def _keyword_lemmas(word: str, lang: str | None) -> list[str]:
+    """Normal form of EVERY token in *word* using the appropriate analyzer.
+
+    Multi-word keywords ("штучний інтелект") yield one lemma per token; the match
+    then requires all of them, so a phrase only hits when all its words appear.
+    """
     morph = _morph_ru if lang == "ru" else _morph_uk
-    parsed = morph.parse(first)
-    if parsed:
-        return parsed[0].normal_form
-    return first
+    lemmas: list[str] = []
+    for tok in _TOKEN_RE.findall(word.casefold()):
+        parsed = morph.parse(tok)
+        lemmas.append(parsed[0].normal_form if parsed else tok)
+    return lemmas
 
 
 def matches_keywords(text: str, keywords: list[Keyword], mode: str) -> bool:
@@ -79,12 +80,17 @@ def matches_keywords(text: str, keywords: list[Keyword], mode: str) -> bool:
         return _union
 
     def _hit(kw: Keyword) -> bool:
-        lemma = _keyword_lemma(kw.word, kw.lang)
+        lemmas = _keyword_lemmas(kw.word, kw.lang)
+        if not lemmas:
+            return False
         if kw.lang == "uk":
-            return lemma in uk()
-        if kw.lang == "ru":
-            return lemma in ru()
-        return lemma in union()
+            target = uk()
+        elif kw.lang == "ru":
+            target = ru()
+        else:
+            target = union()
+        # phrase matches only when every token's lemma is present (whole-word)
+        return all(lemma in target for lemma in lemmas)
 
     results = [_hit(kw) for kw in keywords]
     if mode == "all":

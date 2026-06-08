@@ -38,6 +38,16 @@ def test_empty_keywords_returns_true():
     assert matches_keywords("будь-який текст", [], "any") is True
 
 
+def test_multiword_keyword_requires_all_tokens():
+    # a phrase keyword must match only when ALL its words are present, not just
+    # the first token (README documents phrase keywords like "штучний інтелект").
+    kws = [_kw("штучний інтелект", lang="uk")]
+    assert (
+        matches_keywords("новини про штучний інтелект сьогодні", kws, "any") is True
+    )
+    assert matches_keywords("сьогодні був штучний день", kws, "any") is False
+
+
 def test_lang_uk_matches_ukrainian_inflection():
     # "виборів" (genitive) lemmatizes to "вибори" under uk analyzer -> hit
     kws = [_kw("вибори", lang="uk")]
