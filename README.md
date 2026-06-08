@@ -235,6 +235,7 @@ uv run alembic upgrade head
 | `DEDUP_TTL_SECONDS` | TTL seen-set у Redis, секунди | `604800` (7 днів) |
 | `KEYWORD_MATCH_MODE` | Семантика keyword-фільтра: `any` (OR) або `all` (AND) | `any` |
 | `POST_MAX_LEN` | Жорсткий ліміт довжини поста (символів) | `4096` |
+| `MAX_ITEMS_PER_PARSE` | Макс. items на джерело за один парсинг (найновіші) — обмежує перший backfill великих фідів | `25` |
 
 ---
 
