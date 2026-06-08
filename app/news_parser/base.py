@@ -21,5 +21,4 @@ class NewsItemData:
 
 class BaseParser(ABC):
     @abstractmethod
-    def fetch(self, source: Source) -> list[NewsItemData]:
-        ...
+    def fetch(self, source: Source) -> list[NewsItemData]: ...

@@ -13,7 +13,7 @@ _EMOJI_RE = re.compile(
     "\U0000fe00-\U0000fe0f"  # variation selectors
     "\U00002190-\U000021ff"  # arrows
     "\U00002b00-\U00002bff"  # misc symbols and arrows
-    "\U0000200d"             # zero-width joiner
+    "\U0000200d"  # zero-width joiner
     "]+",
     flags=re.UNICODE,
 )

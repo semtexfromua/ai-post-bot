@@ -11,7 +11,9 @@ def _searchable_text(item: NewsItem) -> str:
     return " ".join(p for p in parts if p)
 
 
-def passes_filters(item: NewsItem, keywords: list[Keyword], redis_client, settings) -> bool:
+def passes_filters(
+    item: NewsItem, keywords: list[Keyword], redis_client, settings
+) -> bool:
     """Filter gate. Order: dedup -> language (soft) -> keywords.
 
     Returns True if the item should continue down the pipeline.

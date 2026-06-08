@@ -46,5 +46,7 @@ def test_dropped_when_keyword_absent():
 
 def test_dropped_on_confident_disallowed_language():
     r = fakeredis.FakeStrictRedis()
-    item = _news("Das ist eine lange deutsche Nachricht über die Regierung heute Abend.")
+    item = _news(
+        "Das ist eine lange deutsche Nachricht über die Regierung heute Abend."
+    )
     assert passes_filters(item, [], r, settings) is False

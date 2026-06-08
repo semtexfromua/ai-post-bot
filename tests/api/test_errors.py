@@ -3,12 +3,8 @@ from app.models.error_log import ErrorLog
 
 
 def test_list_errors_envelope(client, db_session):
-    db_session.add(
-        ErrorLog(stage=ErrorStage.generate, message="gen boom")
-    )
-    db_session.add(
-        ErrorLog(stage=ErrorStage.publish, message="pub boom")
-    )
+    db_session.add(ErrorLog(stage=ErrorStage.generate, message="gen boom"))
+    db_session.add(ErrorLog(stage=ErrorStage.publish, message="pub boom"))
     db_session.commit()
 
     resp = client.get("/api/v1/errors")

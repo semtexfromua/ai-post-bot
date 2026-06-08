@@ -106,7 +106,9 @@ def test_parse_source_unknown_source_id_is_noop(db_session):
 
 def test_parse_source_disabled_source_is_noop(db_session):
     """source.enabled == False → no fetch and no chain enqueued."""
-    src = Source(type="site", name="Disabled", url="https://example.com/disabled", enabled=False)
+    src = Source(
+        type="site", name="Disabled", url="https://example.com/disabled", enabled=False
+    )
     db_session.add(src)
     db_session.commit()
     db_session.refresh(src)

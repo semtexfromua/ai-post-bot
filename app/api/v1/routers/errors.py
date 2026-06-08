@@ -22,7 +22,5 @@ def list_errors(
         count_stmt = count_stmt.where(ErrorLog.stage == stage)
         rows_stmt = rows_stmt.where(ErrorLog.stage == stage)
     total = db.scalar(count_stmt)
-    rows = db.scalars(
-        rows_stmt.offset(pagination.offset).limit(pagination.limit)
-    ).all()
+    rows = db.scalars(rows_stmt.offset(pagination.offset).limit(pagination.limit)).all()
     return Page[ErrorLogRead](data=rows, count=total or 0)

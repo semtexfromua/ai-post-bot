@@ -47,7 +47,8 @@ def test_generate_post_creates_generated(db, monkeypatch):
     item = _persist_news(db)
     monkeypatch.setattr(pipeline, "SessionLocal", lambda: db_ctx(db))
     monkeypatch.setattr(
-        pipeline, "build_generator",
+        pipeline,
+        "build_generator",
         lambda: _Gen(PostDraft(text="🗳️ Нові вибори! Підписуйтесь.", language="uk")),
     )
     monkeypatch.setattr(pipeline, "is_flagged", lambda text: False)
@@ -55,6 +56,7 @@ def test_generate_post_creates_generated(db, monkeypatch):
     post_id = pipeline.generate_post.run(str(item.id))
 
     import uuid
+
     post = db.get(Post, uuid.UUID(post_id))
     assert post is not None
     assert post.status == PostStatus.generated
@@ -65,7 +67,8 @@ def test_generate_post_moderation_flag_marks_failed_and_logs(db, monkeypatch):
     item = _persist_news(db)
     monkeypatch.setattr(pipeline, "SessionLocal", lambda: db_ctx(db))
     monkeypatch.setattr(
-        pipeline, "build_generator",
+        pipeline,
+        "build_generator",
         lambda: _Gen(PostDraft(text="заборонений зміст", language="uk")),
     )
     monkeypatch.setattr(pipeline, "is_flagged", lambda text: True)
@@ -73,9 +76,12 @@ def test_generate_post_moderation_flag_marks_failed_and_logs(db, monkeypatch):
     post_id = pipeline.generate_post.run(str(item.id))
 
     import uuid
+
     post = db.get(Post, uuid.UUID(post_id))
     assert post.status == PostStatus.failed
-    logs = db.query(ErrorLog).filter_by(stage=ErrorStage.generate, news_id=item.id).all()
+    logs = (
+        db.query(ErrorLog).filter_by(stage=ErrorStage.generate, news_id=item.id).all()
+    )
     assert len(logs) == 1
 
 

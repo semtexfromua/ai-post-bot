@@ -29,9 +29,11 @@ def _patch_session(db):
 
 def test_collect_sources_locks_and_routes_per_type(mixed_sources, db):
     fake = fakeredis.FakeStrictRedis()
-    with _patch_session(db), patch.object(
-        pipeline, "get_redis", return_value=fake
-    ), patch.object(pipeline.parse_source, "apply_async") as enq:
+    with (
+        _patch_session(db),
+        patch.object(pipeline, "get_redis", return_value=fake),
+        patch.object(pipeline.parse_source, "apply_async") as enq,
+    ):
         pipeline.collect_sources.run()
 
     assert enq.call_count == 2  # only enabled sources
@@ -46,9 +48,11 @@ def test_collect_sources_locks_and_routes_per_type(mixed_sources, db):
 def test_collect_sources_noop_when_lock_held(mixed_sources, db):
     fake = fakeredis.FakeStrictRedis()
     fake.set("m4:lock:collect", "1", nx=True, ex=300)  # pre-acquire
-    with _patch_session(db), patch.object(
-        pipeline, "get_redis", return_value=fake
-    ), patch.object(pipeline.parse_source, "apply_async") as enq:
+    with (
+        _patch_session(db),
+        patch.object(pipeline, "get_redis", return_value=fake),
+        patch.object(pipeline.parse_source, "apply_async") as enq,
+    ):
         pipeline.collect_sources.run()
 
     enq.assert_not_called()  # lock held → no enqueue

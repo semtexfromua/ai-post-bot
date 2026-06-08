@@ -50,13 +50,14 @@ def test_eager_chain_news_to_published(eager, news, db):
 
     fake = fakeredis.FakeStrictRedis()
 
-    with _patch_session(db), \
-        patch.object(pipeline, "get_redis", return_value=fake), \
-        patch.object(pipeline, "passes_filters", return_value=True), \
-        patch.object(pipeline, "build_generator", return_value=FakeGenerator()), \
-        patch.object(pipeline, "is_flagged", return_value=False), \
-        patch.object(pipeline.publisher, "publish", return_value=5150) as pub:
-
+    with (
+        _patch_session(db),
+        patch.object(pipeline, "get_redis", return_value=fake),
+        patch.object(pipeline, "passes_filters", return_value=True),
+        patch.object(pipeline, "build_generator", return_value=FakeGenerator()),
+        patch.object(pipeline, "is_flagged", return_value=False),
+        patch.object(pipeline.publisher, "publish", return_value=5150) as pub,
+    ):
         flow = chain(
             pipeline.filter_item.s(str(news.id)),
             pipeline.generate_post.s(),

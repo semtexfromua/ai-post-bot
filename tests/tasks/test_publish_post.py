@@ -25,7 +25,9 @@ def generated_post(db):
     )
     db.add(news)
     db.flush()
-    post = Post(news_id=news.id, generated_text="ready text", status=PostStatus.generated)
+    post = Post(
+        news_id=news.id, generated_text="ready text", status=PostStatus.generated
+    )
     db.add(post)
     db.commit()
     return post
@@ -40,9 +42,10 @@ def _patch_session(db):
 
 
 def test_publish_post_publishes_generated(generated_post, db):
-    with _patch_session(db), patch.object(
-        pipeline.publisher, "publish", return_value=7777
-    ) as pub:
+    with (
+        _patch_session(db),
+        patch.object(pipeline.publisher, "publish", return_value=7777) as pub,
+    ):
         pipeline.publish_post.run(str(generated_post.id))
 
     pub.assert_called_once()
@@ -52,9 +55,10 @@ def test_publish_post_publishes_generated(generated_post, db):
 
 
 def test_publish_post_is_idempotent(generated_post, db):
-    with _patch_session(db), patch.object(
-        pipeline.publisher, "publish", return_value=7777
-    ) as pub:
+    with (
+        _patch_session(db),
+        patch.object(pipeline.publisher, "publish", return_value=7777) as pub,
+    ):
         pipeline.publish_post.run(str(generated_post.id))
         pipeline.publish_post.run(str(generated_post.id))  # second run = no-op
 
@@ -72,8 +76,9 @@ def test_publish_post_none_is_skip(db):
 
 def test_publish_post_forbidden_marks_failed_and_logs(generated_post, db):
     err = TelegramForbiddenError(method=MagicMock(), message="bot kicked")
-    with _patch_session(db), patch.object(
-        pipeline.publisher, "publish", side_effect=err
+    with (
+        _patch_session(db),
+        patch.object(pipeline.publisher, "publish", side_effect=err),
     ):
         pipeline.publish_post.run(str(generated_post.id))
 

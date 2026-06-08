@@ -145,9 +145,7 @@ def parse_source(source_id: str) -> None:
         new_ids: list[str] = []
         for data in items:
             chash = content_hash(data.title, data.url)
-            exists = (
-                db.query(NewsItem).filter(NewsItem.content_hash == chash).first()
-            )
+            exists = db.query(NewsItem).filter(NewsItem.content_hash == chash).first()
             if exists is not None:
                 continue
             news = NewsItem(

@@ -38,7 +38,9 @@ def get_source(source_id: uuid.UUID, db: SessionDep) -> Source:
 
 
 @router.patch("/{source_id}", response_model=SourceRead)
-def update_source(source_id: uuid.UUID, payload: SourceUpdate, db: SessionDep) -> Source:
+def update_source(
+    source_id: uuid.UUID, payload: SourceUpdate, db: SessionDep
+) -> Source:
     source = get_source_or_404(source_id, db)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(source, field, value)

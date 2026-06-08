@@ -40,7 +40,9 @@ def test_list_posts_envelope(client, db_session):
 def test_list_posts_status_filter(client, db_session):
     news = _seed_news(db_session)
     db_session.add(Post(news_id=news.id, generated_text="a", status=PostStatus.failed))
-    db_session.add(Post(news_id=news.id, generated_text="b", status=PostStatus.published))
+    db_session.add(
+        Post(news_id=news.id, generated_text="b", status=PostStatus.published)
+    )
     db_session.commit()
 
     resp = client.get("/api/v1/posts", params={"status": "failed"})

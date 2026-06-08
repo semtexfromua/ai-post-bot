@@ -64,9 +64,7 @@ def test_site_scraper_empty_extraction_returns_empty_list():
 
 @respx.mock
 def test_site_scraper_non_200_returns_empty_list():
-    respx.get("https://example.com/article").mock(
-        return_value=httpx.Response(404)
-    )
+    respx.get("https://example.com/article").mock(return_value=httpx.Response(404))
     src = _make_source()
     with patch("app.news_parser.site.logger.warning") as mock_warn:
         items = SiteScraper().fetch(src)

@@ -15,7 +15,9 @@ class TZDateTime(TypeDecorator):
         if value is None:
             return None
         if value.tzinfo is None:
-            raise ValueError(f"TZDateTime requires a tz-aware datetime, got naive: {value!r}")
+            raise ValueError(
+                f"TZDateTime requires a tz-aware datetime, got naive: {value!r}"
+            )
         return value.astimezone(UTC).replace(tzinfo=None)
 
     def process_result_value(self, value, dialect):

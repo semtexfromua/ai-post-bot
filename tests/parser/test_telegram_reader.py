@@ -61,7 +61,11 @@ def test_telegram_reader_incremental_resolve_and_min_id():
     assert kwargs["min_id"] == 100
     # entity may be passed positionally or as a keyword argument
     entity_kwarg = kwargs.get("entity")
-    entity_posarg = fake_client.get_messages.call_args.args[0] if fake_client.get_messages.call_args.args else None
+    entity_posarg = (
+        fake_client.get_messages.call_args.args[0]
+        if fake_client.get_messages.call_args.args
+        else None
+    )
     assert entity_kwarg == entity or entity_posarg == entity
 
     assert len(items) == 2

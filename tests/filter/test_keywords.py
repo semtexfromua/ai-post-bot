@@ -9,7 +9,10 @@ def _kw(word: str, lang: str | None = None) -> Keyword:
 def test_matches_inflected_form_via_lemma():
     # keyword "вибори" must match the inflected genitive "виборів"
     kws = [_kw("вибори")]
-    assert matches_keywords("сьогодні відбулося багато виборів у регіоні", kws, "any") is True
+    assert (
+        matches_keywords("сьогодні відбулося багато виборів у регіоні", kws, "any")
+        is True
+    )
 
 
 def test_no_match_when_keyword_absent():

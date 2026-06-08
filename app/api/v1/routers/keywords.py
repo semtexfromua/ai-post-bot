@@ -15,7 +15,10 @@ router = APIRouter(prefix="/keywords", tags=["keywords"])
 def list_keywords(db: SessionDep, pagination: PaginationDep) -> Page[KeywordRead]:
     total = db.scalar(select(func.count()).select_from(Keyword))
     rows = db.scalars(
-        select(Keyword).order_by(Keyword.word).offset(pagination.offset).limit(pagination.limit)
+        select(Keyword)
+        .order_by(Keyword.word)
+        .offset(pagination.offset)
+        .limit(pagination.limit)
     ).all()
     return Page[KeywordRead](data=rows, count=total or 0)
 
@@ -35,7 +38,9 @@ def get_keyword(keyword_id: uuid.UUID, db: SessionDep) -> Keyword:
 
 
 @router.patch("/{keyword_id}", response_model=KeywordRead)
-def update_keyword(keyword_id: uuid.UUID, payload: KeywordUpdate, db: SessionDep) -> Keyword:
+def update_keyword(
+    keyword_id: uuid.UUID, payload: KeywordUpdate, db: SessionDep
+) -> Keyword:
     keyword = get_keyword_or_404(keyword_id, db)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(keyword, field, value)

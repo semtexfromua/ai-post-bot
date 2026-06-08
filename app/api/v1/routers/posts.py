@@ -22,7 +22,5 @@ def list_posts(
         count_stmt = count_stmt.where(Post.status == status)
         rows_stmt = rows_stmt.where(Post.status == status)
     total = db.scalar(count_stmt)
-    rows = db.scalars(
-        rows_stmt.offset(pagination.offset).limit(pagination.limit)
-    ).all()
+    rows = db.scalars(rows_stmt.offset(pagination.offset).limit(pagination.limit)).all()
     return Page[PostRead](data=rows, count=total or 0)

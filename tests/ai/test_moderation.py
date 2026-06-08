@@ -27,7 +27,9 @@ def test_is_flagged_false_when_clean():
             json={
                 "id": "modr-2",
                 "model": "omni-moderation-latest",
-                "results": [{"flagged": False, "categories": {}, "category_scores": {}}],
+                "results": [
+                    {"flagged": False, "categories": {}, "category_scores": {}}
+                ],
             },
         )
     )

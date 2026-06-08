@@ -39,9 +39,7 @@ def test_generate_returns_202_and_enqueues(client, db_session):
 
 def test_generate_news_id_404_when_missing(client):
     with patch("app.api.v1.routers.generate.generate_post.delay") as delay:
-        resp = client.post(
-            "/api/v1/generate", json={"news_id": str(uuid.uuid4())}
-        )
+        resp = client.post("/api/v1/generate", json={"news_id": str(uuid.uuid4())})
     assert resp.status_code == 404
     delay.assert_not_called()
 

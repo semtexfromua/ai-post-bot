@@ -7,7 +7,7 @@ def test_first_seen_is_not_duplicate_then_subsequent_is():
     r = fakeredis.FakeStrictRedis()
     h = "abc123hash"
     assert is_duplicate(h, r) is False  # first time -> stored, not a dup
-    assert is_duplicate(h, r) is True   # second time -> already seen -> dup
+    assert is_duplicate(h, r) is True  # second time -> already seen -> dup
 
 
 def test_distinct_hashes_independent():
