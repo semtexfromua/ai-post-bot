@@ -1,0 +1,48 @@
+import importlib
+
+import app.core.config as config_module
+
+
+def test_settings_load_from_env(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "prod")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg2://u:p@db:5432/m4")
+    monkeypatch.setenv("REDIS_URL", "redis://redis:6379/1")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-123")
+    monkeypatch.setenv("TELEGRAM_API_ID", "424242")
+    monkeypatch.setenv("TELEGRAM_API_HASH", "hash-abc")
+    monkeypatch.setenv("TELETHON_STRING_SESSION", "sess-xyz")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "111:bot-token")
+    monkeypatch.setenv("TELEGRAM_CHANNEL_ID", "-1009999")
+
+    reloaded = importlib.reload(config_module)
+    settings = reloaded.Settings()
+
+    assert settings.ENVIRONMENT == "prod"
+    assert settings.DATABASE_URL == "postgresql+psycopg2://u:p@db:5432/m4"
+    assert settings.REDIS_URL == "redis://redis:6379/1"
+    assert settings.OPENAI_API_KEY.get_secret_value() == "sk-test-123"
+    assert settings.OPENAI_MODEL == "gpt-4o-mini"
+    assert settings.OPENAI_TIMEOUT == 30
+    assert settings.TELEGRAM_API_ID == 424242
+    assert settings.TELEGRAM_API_HASH.get_secret_value() == "hash-abc"
+    assert settings.TELETHON_STRING_SESSION.get_secret_value() == "sess-xyz"
+    assert settings.TELEGRAM_BOT_TOKEN.get_secret_value() == "111:bot-token"
+    assert settings.TELEGRAM_CHANNEL_ID == -1009999
+    assert settings.ALLOWED_LANGUAGES == ["uk", "ru", "en"]
+    assert settings.DEDUP_TTL_SECONDS == 604800
+    assert settings.KEYWORD_MATCH_MODE == "any"
+    assert settings.POST_MAX_LEN == 4096
+
+
+def test_secrets_are_not_plain_in_repr(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-secret")
+    monkeypatch.setenv("TELEGRAM_API_ID", "1")
+    monkeypatch.setenv("TELEGRAM_API_HASH", "h")
+    monkeypatch.setenv("TELETHON_STRING_SESSION", "s")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
+    monkeypatch.setenv("TELEGRAM_CHANNEL_ID", "1")
+
+    reloaded = importlib.reload(config_module)
+    settings = reloaded.Settings()
+
+    assert "sk-secret" not in repr(settings.OPENAI_API_KEY)
