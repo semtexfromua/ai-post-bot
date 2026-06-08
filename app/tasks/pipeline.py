@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import html
 import traceback
 import uuid
 
@@ -18,6 +17,7 @@ from celery import chain
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.ai.formatting import format_post
 from app.ai.generator import build_generator
 from app.ai.moderation import is_flagged
 from app.core.config import settings
@@ -138,16 +138,15 @@ def generate_post(self, news_id: str | None) -> str | None:
         session.add(post)
         session.flush()
         try:
-            text = draft.text
-            if is_flagged(text):
+            if is_flagged(draft.text):
                 raise ValueError("moderation flagged generated text")
-            # Guard the html.escape()d payload the publisher actually sends, not the
-            # raw draft — escaping grows '<','>','&' and could push a draft that is
-            # under the limit over Telegram's 4096 cap (MessageTooLong).
-            if not text or len(html.escape(text)) > settings.POST_MAX_LEN:
+            # Build the final HTML payload (escaped body + source link + hashtags) and
+            # guard ITS length — that's exactly what the publisher sends to Telegram.
+            final_text = format_post(draft, item)
+            if not draft.text.strip() or len(final_text) > settings.POST_MAX_LEN:
                 raise ValueError("generated text empty or exceeds POST_MAX_LEN")
-            mark_generated(session, post, text)
-            logger.info("generate.ok", post_id=str(post.id), len=len(text))
+            mark_generated(session, post, final_text)
+            logger.info("generate.ok", post_id=str(post.id), len=len(final_text))
         except Exception as exc:  # noqa: BLE001 — log every failure, never raise out
             mark_failed(
                 session,
