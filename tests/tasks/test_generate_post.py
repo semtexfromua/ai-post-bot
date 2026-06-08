@@ -91,6 +91,27 @@ def test_generate_post_moderation_flag_marks_failed_and_logs(db, monkeypatch):
     assert len(logs) == 1
 
 
+def test_generate_post_idempotent_on_redelivery(db, monkeypatch):
+    """A redelivered generate_post (acks_late worker loss) must not create a
+    second Post for the same news_id — it returns the existing post id."""
+    import uuid
+
+    item = _persist_news(db)
+    monkeypatch.setattr(pipeline, "SessionLocal", lambda: db_ctx(db))
+    monkeypatch.setattr(
+        pipeline,
+        "build_generator",
+        lambda: _Gen(PostDraft(text="первинний пост ✅", language="uk")),
+    )
+    monkeypatch.setattr(pipeline, "is_flagged", lambda text: False)
+
+    first_id = pipeline.generate_post.run(str(item.id))
+    second_id = pipeline.generate_post.run(str(item.id))  # redelivery
+
+    assert second_id == first_id
+    assert db.query(Post).filter_by(news_id=uuid.UUID(str(item.id))).count() == 1
+
+
 def test_generate_post_none_input_skips(db, monkeypatch):
     monkeypatch.setattr(pipeline, "SessionLocal", lambda: db_ctx(db))
     assert pipeline.generate_post.run(None) is None

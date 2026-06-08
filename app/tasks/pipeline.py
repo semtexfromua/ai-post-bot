@@ -81,6 +81,18 @@ def generate_post(self, news_id: str | None) -> str | None:
         if item is None:
             return None
 
+        # 0) Idempotency: a redelivered task (acks_late worker loss after the Post
+        # was committed but before the ack) must not create a second Post for the
+        # same news_id. A prior non-failed Post -> no-op, return its id. This closes
+        # the redelivery duplicate hole the way content_hash closes it for parsing.
+        existing = session.scalar(
+            select(Post).where(
+                Post.news_id == item.id, Post.status != PostStatus.failed
+            )
+        )
+        if existing is not None:
+            return str(existing.id)
+
         # 1) Generate FIRST (no Post row yet) so a transient retry can't duplicate Posts.
         try:
             draft = build_generator().generate(item)
