@@ -34,6 +34,24 @@ def test_settings_load_from_env(monkeypatch):
     assert settings.POST_MAX_LEN == 4096
 
 
+def test_prod_raises_on_empty_secrets(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "prod")
+
+    import pytest
+    with pytest.raises(ValueError):
+        import importlib as _il
+        _il.reload(config_module)
+        config_module.Settings()
+
+
+def test_local_with_empty_secrets_does_not_raise(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "local")
+
+    reloaded = importlib.reload(config_module)
+    settings = reloaded.Settings()  # must not raise
+    assert settings.ENVIRONMENT == "local"
+
+
 def test_secrets_are_not_plain_in_repr(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-secret")
     monkeypatch.setenv("TELEGRAM_API_ID", "1")

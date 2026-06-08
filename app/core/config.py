@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +26,26 @@ class Settings(BaseSettings):
     DEDUP_TTL_SECONDS: int = 604800
     KEYWORD_MATCH_MODE: Literal["any", "all"] = "any"
     POST_MAX_LEN: int = 4096
+
+    @model_validator(mode="after")
+    def _require_secrets_in_prod(self) -> "Settings":
+        if self.ENVIRONMENT == "prod":
+            empty = [
+                name for name, val in [
+                    ("OPENAI_API_KEY", self.OPENAI_API_KEY),
+                    ("TELEGRAM_API_HASH", self.TELEGRAM_API_HASH),
+                    ("TELETHON_STRING_SESSION", self.TELETHON_STRING_SESSION),
+                    ("TELEGRAM_BOT_TOKEN", self.TELEGRAM_BOT_TOKEN),
+                ] if not val.get_secret_value()
+            ] + [
+                name for name, val in [
+                    ("TELEGRAM_API_ID", self.TELEGRAM_API_ID),
+                    ("TELEGRAM_CHANNEL_ID", self.TELEGRAM_CHANNEL_ID),
+                ] if val == 0
+            ]
+            if empty:
+                raise ValueError(f"Required in prod but missing/empty: {empty}")
+        return self
 
 
 settings = Settings()
