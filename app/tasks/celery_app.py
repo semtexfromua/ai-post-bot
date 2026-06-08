@@ -23,6 +23,7 @@ celery_app.conf.update(
     task_soft_time_limit=120,
     task_time_limit=150,
     broker_transport_options={"visibility_timeout": 3600},
+    task_default_queue="default",
     task_routes={
         # publish_post always on the tg queue (single-client constraint).
         # parse_source is routed per-source at CALL time by collect_sources

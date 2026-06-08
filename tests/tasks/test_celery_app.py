@@ -28,6 +28,10 @@ def test_time_limits_and_visibility_timeout():
     assert vis == 3600
 
 
+def test_default_queue_is_default():
+    assert celery_app.conf.task_default_queue == "default"
+
+
 def test_publish_post_routed_to_tg_queue():
     routes = celery_app.conf.task_routes
     assert routes["app.tasks.pipeline.publish_post"] == {"queue": "tg"}
