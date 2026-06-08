@@ -1,3 +1,5 @@
+import os
+
 from openai import OpenAI
 
 from app.core.config import settings
@@ -13,5 +15,7 @@ _client = OpenAI(
 
 def is_flagged(text: str) -> bool:
     """Return True if the moderation endpoint flags the text."""
+    if os.getenv("USE_FAKE_AI") == "1":
+        return False
     resp = _client.moderations.create(model=_MODERATION_MODEL, input=text)
     return bool(resp.results[0].flagged)

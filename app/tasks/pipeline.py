@@ -12,6 +12,7 @@ from aiogram.exceptions import (
     TelegramServerError,
 )
 from celery import chain
+from celery.exceptions import MaxRetriesExceededError
 from sqlalchemy import select
 
 from app.ai.generator import build_generator
@@ -73,7 +74,22 @@ def generate_post(self, news_id: str | None) -> str | None:
         try:
             draft = build_generator().generate(item)
         except _OPENAI_TRANSIENT as exc:
-            raise self.retry(exc=exc, countdown=2**self.request.retries, max_retries=5)
+            try:
+                raise self.retry(exc=exc, countdown=2**self.request.retries)
+            except MaxRetriesExceededError:
+                post = Post(news_id=item.id, generated_text="", status=PostStatus.new)
+                session.add(post)
+                session.flush()
+                mark_failed(
+                    session,
+                    post=post,
+                    stage=ErrorStage.generate,
+                    message=f"OpenAI transient error, retries exhausted: {exc}",
+                    tb=traceback.format_exc(),
+                    news_id=item.id,
+                )
+                session.commit()
+                return str(post.id)
         except Exception as exc:  # non-transient generation failure (e.g. refusal)
             post = Post(news_id=item.id, generated_text="", status=PostStatus.new)
             session.add(post)
