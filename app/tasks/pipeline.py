@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import traceback
 import uuid
 
 import redis as redis_lib
+from aiogram.exceptions import (
+    TelegramBadRequest,
+    TelegramForbiddenError,
+    TelegramRetryAfter,
+    TelegramServerError,
+)
 from celery import chain
 from sqlalchemy import select
 
@@ -19,7 +26,8 @@ from app.models.source import Source
 from app.news_parser.factory import get_parser
 from app.news_parser.hashing import content_hash
 from app.tasks.celery_app import celery_app
-from app.tasks.state import mark_failed, mark_generated
+from app.tasks.state import mark_failed, mark_generated, mark_published
+from app.telegram import publisher
 
 
 def _redis() -> redis_lib.Redis:
@@ -83,9 +91,38 @@ def filter_item(news_id: str) -> str | None:
         return news_id if ok else None
 
 
-@celery_app.task(name="app.tasks.pipeline.publish_post")
-def publish_post(post_id: str | None) -> None:
-    raise NotImplementedError  # stub — completed in the publish phase
+@celery_app.task(
+    name="app.tasks.pipeline.publish_post",
+    bind=True,
+    autoretry_for=(TelegramRetryAfter, TelegramServerError),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
+def publish_post(self, post_id: str | None) -> None:
+    """Idempotent publish: only publishes a post with status==generated."""
+    if post_id is None:
+        return
+    with SessionLocal() as db:
+        post = db.get(Post, uuid.UUID(post_id))
+        if post is None or post.status != PostStatus.generated:
+            return  # idempotent: only publish a generated post
+        try:
+            message_id = publisher.publish(
+                settings.TELEGRAM_CHANNEL_ID, post.generated_text
+            )
+        except (TelegramForbiddenError, TelegramBadRequest) as exc:
+            mark_failed(
+                db,
+                post=post,
+                stage=ErrorStage.publish,
+                message=str(exc),
+                tb=traceback.format_exc(),
+            )
+            db.commit()
+            return
+        mark_published(db, post, message_id)
+        db.commit()
 
 
 @celery_app.task(name="app.tasks.pipeline.parse_source")
