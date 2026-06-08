@@ -6,15 +6,20 @@ import redis as redis_lib
 from celery import chain
 from sqlalchemy import select
 
+from app.ai.generator import build_generator
+from app.ai.moderation import is_flagged
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.filter.service import passes_filters
+from app.models.base import ErrorStage, PostStatus
 from app.models.keyword import Keyword
 from app.models.news_item import NewsItem
+from app.models.post import Post
 from app.models.source import Source
 from app.news_parser.factory import get_parser
 from app.news_parser.hashing import content_hash
 from app.tasks.celery_app import celery_app
+from app.tasks.state import mark_failed, mark_generated
 
 
 def _redis() -> redis_lib.Redis:
@@ -27,7 +32,43 @@ def _load_keywords(session) -> list[Keyword]:
 
 @celery_app.task(name="app.tasks.pipeline.generate_post")
 def generate_post(news_id: str | None) -> str | None:
-    raise NotImplementedError  # implemented in the AI/generation phase
+    """Generate a post for a NewsItem.
+
+    None input -> early return (chain stopped upstream).
+    Happy path: generate -> moderation -> length guard -> Post(status=generated).
+    On any failure: Post(status=failed) + ErrorLog(stage=generate). Returns post_id.
+    """
+    if news_id is None:
+        return None
+
+    with SessionLocal() as session:
+        item = session.get(NewsItem, uuid.UUID(news_id))
+        if item is None:
+            return None
+
+        # Explicitly set status=PostStatus.new so the NOT NULL constraint is satisfied.
+        post = Post(news_id=item.id, generated_text="", status=PostStatus.new)
+        session.add(post)
+        session.flush()  # assign post.id for FK/ErrorLog wiring
+
+        try:
+            draft = build_generator().generate(item)
+            text = draft.text
+            if is_flagged(text):
+                raise ValueError("moderation flagged generated text")
+            if not text or len(text) > settings.POST_MAX_LEN:
+                raise ValueError("generated text empty or exceeds POST_MAX_LEN")
+            mark_generated(session, post, text)
+        except Exception as exc:  # noqa: BLE001 — log every failure, never raise out
+            mark_failed(
+                session,
+                post=post,
+                stage=ErrorStage.generate,
+                message=str(exc),
+                news_id=item.id,
+            )
+        session.commit()
+        return str(post.id)
 
 
 @celery_app.task(name="app.tasks.pipeline.filter_item")
