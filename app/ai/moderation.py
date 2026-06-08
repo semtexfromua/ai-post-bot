@@ -9,7 +9,7 @@ _MODERATION_MODEL = "omni-moderation-latest"
 # Module-level client (one per worker).
 _client = OpenAI(
     api_key=settings.OPENAI_API_KEY.get_secret_value(),
-    base_url=settings.OPENAI_BASE_URL,
+    base_url=settings.OPENAI_BASE_URL or None,  # "" -> default OpenAI endpoint
     timeout=settings.OPENAI_TIMEOUT,
 )
 
