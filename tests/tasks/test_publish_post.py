@@ -3,7 +3,8 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
+from celery.exceptions import Retry
 
 from app.models.base import ErrorStage, PostStatus
 from app.models.error_log import ErrorLog
@@ -72,6 +73,28 @@ def test_publish_post_none_is_skip(db):
     with _patch_session(db), patch.object(pipeline.publisher, "publish") as pub:
         pipeline.publish_post.run(None)
     pub.assert_not_called()
+
+
+def test_publish_post_retry_after_honors_cooldown(generated_post, db):
+    """TelegramRetryAfter -> self.retry(countdown=retry_after)."""
+    err = TelegramRetryAfter(method=MagicMock(), message="flood", retry_after=42)
+    sentinel = Retry("retrying")
+    with (
+        _patch_session(db),
+        patch.object(pipeline.publisher, "publish", side_effect=err),
+        patch.object(
+            pipeline.publish_post, "retry", side_effect=sentinel
+        ) as mock_retry,
+    ):
+        with pytest.raises(Retry):
+            pipeline.publish_post.run(str(generated_post.id))
+
+    mock_retry.assert_called_once()
+    assert mock_retry.call_args.kwargs["countdown"] == 42
+    # transient flood control must not mark the post failed
+    db.refresh(generated_post)
+    assert generated_post.status == PostStatus.generated
+    assert db.query(ErrorLog).count() == 0
 
 
 def test_publish_post_forbidden_marks_failed_and_logs(generated_post, db):

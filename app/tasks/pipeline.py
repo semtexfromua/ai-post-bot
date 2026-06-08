@@ -130,15 +130,17 @@ def filter_item(news_id: str) -> str | None:
 
 
 @celery_app.task(
-    name="app.tasks.pipeline.publish_post",
     bind=True,
-    autoretry_for=(TelegramRetryAfter, TelegramServerError),
-    retry_backoff=True,
-    retry_jitter=True,
-    max_retries=3,
+    name="app.tasks.pipeline.publish_post",
+    max_retries=5,
 )
 def publish_post(self, post_id: str | None) -> None:
-    """Idempotent publish: only publishes a post with status==generated."""
+    """Idempotent publish: only publishes a post with status==generated.
+
+    TelegramRetryAfter -> retry honoring Telegram's requested cooldown.
+    TelegramServerError -> retry with exponential backoff.
+    TelegramForbiddenError / TelegramBadRequest -> permanent failure, no retry.
+    """
     if post_id is None:
         return
     with SessionLocal() as db:
@@ -149,6 +151,10 @@ def publish_post(self, post_id: str | None) -> None:
             message_id = publisher.publish(
                 settings.TELEGRAM_CHANNEL_ID, post.generated_text
             )
+        except TelegramRetryAfter as exc:
+            raise self.retry(countdown=exc.retry_after, exc=exc)
+        except TelegramServerError as exc:
+            raise self.retry(countdown=2**self.request.retries, exc=exc)
         except (TelegramForbiddenError, TelegramBadRequest) as exc:
             mark_failed(
                 db,
