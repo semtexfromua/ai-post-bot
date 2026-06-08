@@ -141,7 +141,7 @@ beat */30 → collect_sources (orchestrator, default-черга)
 
 **`ai/`** — `PostGenerator` Protocol + `OpenAIGenerator`
 (`chat.completions.parse` → `PostDraft{text, language, hashtags?}`).
-Промпт: стабільний system (роль/формат/«пиши мовою джерела»/довжина) + user (поля NewsItem).
+Промпт: стабільний system (роль/формат/«завжди українською, терміни лишай англ»/хук+чому-важливо/довжина) + user (поля NewsItem). Пост форматується кодом: екранований текст + клікабельний `<a>`-лінк на джерело + хештеги (модель URL не генерує).
 `gpt-4o-mini` через env, `temperature≈0.75`, `max_completion_tokens=512` (узгоджено з
 промптом «стисло, ~600 символів» — занизький кап обрізав валідні пости в
 `LengthFinishReasonError`; POST_MAX_LEN=4096 лишається жорстким гардом, не ціллю генерації).
@@ -154,7 +154,7 @@ Moderation-гейт (`omni-moderation-latest`, безкоштовний) + Pytho
 - `TelegramReader` — Telethon: resolve `@username` **один раз** + кеш entity, `get_messages(min_id=last_seen_msg_id)`. Жодних join.
 - Factory за `source.type`.
 
-**`filter/`** — normalize (casefold, NFC, strip URL/emoji) → exact dedup (sha1 url + нормал. заголовок у Redis SET, TTL 7д) → мова (lingua uk/ru/en, **м'який** сигнал: дроп лише на високій впевненості) → keyword (pymorphy3-лема, whole-word, OR-семантика). Init detector/morph — раз на воркер.
+**`filter/`** — normalize (casefold, NFC, strip URL/emoji) → exact dedup (sha1 url + нормал. заголовок у Redis SET, TTL 7д) → мова (lingua, дозволені uk/en, **м'який** сигнал: дроп лише на високій впевненості) → keyword (pymorphy3-лема, whole-word, OR-семантика). Init detector/morph — раз на воркер.
 
 **`telegram/`** — `publisher.py`: тонкий write-only паблішер (без Dispatcher/FSM/router).
 - aiogram v3: `Bot(token, default=DefaultBotProperties(parse_mode=ParseMode.HTML, link_preview_is_disabled=True))`.

@@ -231,7 +231,7 @@ uv run alembic upgrade head
 | `TELETHON_STRING_SESSION` | Сесія читача (SecretStr), генерується `scripts/login.py` | `1BVtsOI8...` |
 | `TELEGRAM_BOT_TOKEN` | Bot API токен від @BotFather (SecretStr) | `123456:ABC...` |
 | `TELEGRAM_CHANNEL_ID` | ID каналу для публікації (int, від'ємне число) | `-1001234567890` |
-| `ALLOWED_LANGUAGES` | Дозволені мови фільтра (JSON-список) | `["uk","ru","en"]` |
+| `ALLOWED_LANGUAGES` | Дозволені мови джерел (вивід завжди українською) | `["uk","en"]` |
 | `DEDUP_TTL_SECONDS` | TTL seen-set у Redis, секунди | `604800` (7 днів) |
 | `KEYWORD_MATCH_MODE` | Семантика keyword-фільтра: `any` (OR) або `all` (AND) | `any` |
 | `POST_MAX_LEN` | Жорсткий ліміт довжини поста (символів) | `4096` |

@@ -213,7 +213,7 @@ def build_generator() -> PostGenerator   # обирає OpenAI/Fake за env
 # moderation.py
 def is_flagged(text: str) -> bool         # omni-moderation-latest; у тестах мок
 ```
-- Промпт: system (роль/формат/«мовою джерела»/довжина ≤ POST_MAX_LEN/емодзі+CTA) + user (поля NewsItem).
+- Промпт: system (роль/формат/«завжди українською, терміни англ»/хук+чому-важливо/довжина ≤ POST_MAX_LEN/емодзі+CTA, без URL) + user (поля NewsItem). `format_post` додає клікабельний лінк-джерело + хештеги; publisher шле готовий HTML без повторного екранування.
 - `OPENAI_MODEL`, temperature≈0.75, max_completion_tokens=512 (вистачає для стислого поста; занизький кап обрізав валідні пости). `OPENAIGenerator` ловить `LengthFinishReasonError` → чистий `ValueError`.
 
 ## telegram контракт (app/telegram/publisher.py)
