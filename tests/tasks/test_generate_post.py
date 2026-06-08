@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import openai
 import pytest
-from celery.exceptions import MaxRetriesExceededError, Retry
+from celery.exceptions import Retry
 
 from app.ai import moderation as moderation_module
 from app.ai.schemas import PostDraft
@@ -144,13 +144,17 @@ def test_generate_post_retries_exhausted_marks_failed(db, monkeypatch):
     )
     monkeypatch.setattr(pipeline, "is_flagged", lambda text: False)
 
-    # Simulate exhausted retries: retry raises MaxRetriesExceededError instead of Retry.
-    with patch.object(
-        pipeline.generate_post,
-        "retry",
-        side_effect=MaxRetriesExceededError(),
-    ):
-        post_id = pipeline.generate_post.run(str(item.id))
+    # Drive the REAL exhaustion path: simulate the final attempt by pushing a request
+    # context where retries == max_retries.  Celery's Task.retry(exc=...) re-raises
+    # the ORIGINAL exception (not MaxRetriesExceededError), so the old inner
+    # try/except MaxRetriesExceededError was dead.  The new code checks exhaustion
+    # BEFORE calling retry, so no retry mock is needed at all.
+    task = pipeline.generate_post
+    task.push_request(retries=task.max_retries)
+    try:
+        post_id = task.run(str(item.id))
+    finally:
+        task.pop_request()
 
     assert post_id is not None
     post = db.get(Post, uuid.UUID(post_id))
@@ -160,6 +164,28 @@ def test_generate_post_retries_exhausted_marks_failed(db, monkeypatch):
         db.query(ErrorLog).filter_by(stage=ErrorStage.generate, news_id=item.id).all()
     )
     assert len(logs) == 1
+
+
+def test_generate_post_transient_not_exhausted_retries_without_post(db, monkeypatch):
+    """When retries < max_retries, the task calls self.retry (raises Retry) and
+    writes NO Post row — the no-duplicate-Post invariant is preserved."""
+    item = _persist_news(db)
+    monkeypatch.setattr(pipeline, "SessionLocal", lambda: db_ctx(db))
+    monkeypatch.setattr(
+        pipeline, "build_generator", lambda: _RaisingGen(_TransientRateLimit())
+    )
+
+    task = pipeline.generate_post
+    # Push a request context where retries is below the max (e.g. attempt 2 of 5).
+    task.push_request(retries=task.max_retries - 1)
+    try:
+        # Celery's retry(exc=exc) re-raises the ORIGINAL exception, not Retry.
+        with pytest.raises(_TransientRateLimit):
+            task.run(str(item.id))
+    finally:
+        task.pop_request()
+
+    assert db.query(Post).count() == 0
 
 
 def test_generate_post_nontransient_error_marks_failed_no_retry(db, monkeypatch):

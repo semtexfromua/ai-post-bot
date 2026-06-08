@@ -14,7 +14,6 @@ from aiogram.exceptions import (
     TelegramServerError,
 )
 from celery import chain
-from celery.exceptions import MaxRetriesExceededError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
@@ -86,9 +85,8 @@ def generate_post(self, news_id: str | None) -> str | None:
         try:
             draft = build_generator().generate(item)
         except _OPENAI_TRANSIENT as exc:
-            try:
-                raise self.retry(exc=exc, countdown=2**self.request.retries)
-            except MaxRetriesExceededError:
+            if self.request.retries >= (self.max_retries or 0):
+                # retries exhausted -> record a failed Post + ErrorLog (audit trail)
                 post = Post(news_id=item.id, generated_text="", status=PostStatus.new)
                 session.add(post)
                 session.flush()
@@ -105,6 +103,7 @@ def generate_post(self, news_id: str | None) -> str | None:
                     "generate.failed", news_id=news_id, reason="retries_exhausted"
                 )
                 return str(post.id)
+            raise self.retry(exc=exc, countdown=2**self.request.retries)
         except Exception as exc:  # non-transient generation failure (e.g. refusal)
             post = Post(news_id=item.id, generated_text="", status=PostStatus.new)
             session.add(post)
