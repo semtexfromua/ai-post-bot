@@ -114,7 +114,9 @@ services:
 
   beat:
     <<: *app-image
-    command: ["celery", "-A", "app.tasks.celery_app", "beat", "-l", "info"]
+    # --schedule in a writable path: /app is root-owned, the non-root app user
+    # cannot create celerybeat-schedule there (Permission denied).
+    command: ["celery", "-A", "app.tasks.celery_app", "beat", "-l", "info", "--schedule", "/tmp/celerybeat-schedule"]
     env_file:
       - path: .env
         required: false
