@@ -21,6 +21,11 @@ def _seed_news(db):
     return news
 
 
+def test_generate_empty_body_returns_422(client):
+    resp = client.post("/api/v1/generate", json={})
+    assert resp.status_code == 422
+
+
 def test_generate_returns_202_and_enqueues(client, db_session):
     news = _seed_news(db_session)
     fake_result = MagicMock()

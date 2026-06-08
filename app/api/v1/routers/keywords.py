@@ -28,7 +28,6 @@ def create_keyword(payload: KeywordCreate, db: SessionDep) -> Keyword:
     keyword = Keyword(**payload.model_dump())
     db.add(keyword)
     db.commit()
-    db.refresh(keyword)
     return keyword
 
 
@@ -45,7 +44,6 @@ def update_keyword(
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(keyword, field, value)
     db.commit()
-    db.refresh(keyword)
     return keyword
 
 

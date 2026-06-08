@@ -61,10 +61,16 @@ def test_error_log_read_fields():
     }
 
 
-def test_generate_request_defaults_none():
-    gr = GenerateRequest()
+def test_generate_request_requires_news_id_or_text():
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        GenerateRequest()
+
+    gr = GenerateRequest(text="foo")
     assert gr.news_id is None
-    assert gr.text is None
+    assert gr.text == "foo"
 
 
 def test_generate_response_shape():

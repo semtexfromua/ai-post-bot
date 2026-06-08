@@ -28,7 +28,6 @@ def create_source(payload: SourceCreate, db: SessionDep) -> Source:
     source = Source(**payload.model_dump())
     db.add(source)
     db.commit()
-    db.refresh(source)
     return source
 
 
@@ -45,7 +44,6 @@ def update_source(
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(source, field, value)
     db.commit()
-    db.refresh(source)
     return source
 
 

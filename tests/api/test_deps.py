@@ -3,7 +3,7 @@ import uuid
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1.deps import Pagination, get_post_or_404, get_source_or_404
+from app.api.v1.deps import Pagination, get_source_or_404
 from app.models.base import SourceType
 from app.models.source import Source
 
@@ -32,10 +32,4 @@ def test_get_source_or_404_found(db_session):
 def test_get_source_or_404_missing(db_session):
     with pytest.raises(HTTPException) as exc:
         get_source_or_404(uuid.uuid4(), db_session)
-    assert exc.value.status_code == 404
-
-
-def test_get_post_or_404_missing(db_session):
-    with pytest.raises(HTTPException) as exc:
-        get_post_or_404(uuid.uuid4(), db_session)
     assert exc.value.status_code == 404

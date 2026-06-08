@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.models.keyword import Keyword
-from app.models.post import Post
 from app.models.source import Source
 
 SessionDep = Annotated[Session, Depends(get_db)]
@@ -32,15 +31,6 @@ def get_source_or_404(source_id: uuid.UUID, db: SessionDep) -> Source:
             status_code=status.HTTP_404_NOT_FOUND, detail="Source not found"
         )
     return source
-
-
-def get_post_or_404(post_id: uuid.UUID, db: SessionDep) -> Post:
-    post = db.get(Post, post_id)
-    if post is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
-        )
-    return post
 
 
 def get_keyword_or_404(keyword_id: uuid.UUID, db: SessionDep) -> Keyword:
