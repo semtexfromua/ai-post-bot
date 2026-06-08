@@ -40,7 +40,6 @@ def mark_failed(
     db.flush()
 
 
-# mark_published comes in the publish phase (P5.x)
 def mark_published(db: Session, post: Post, message_id: int) -> None:
     post.tg_message_id = message_id
     post.status = PostStatus.published

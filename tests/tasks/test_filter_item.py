@@ -25,7 +25,7 @@ def _persist_news(db, title: str, content_hash: str) -> NewsItem:
 def test_filter_item_passes_returns_news_id(db, monkeypatch):
     item = _persist_news(db, "Сьогодні відбулося багато виборів", "h-pass")
     monkeypatch.setattr(pipeline, "SessionLocal", lambda: db_ctx(db))
-    monkeypatch.setattr(pipeline, "_redis", lambda: fakeredis.FakeStrictRedis())
+    monkeypatch.setattr(pipeline, "get_redis", lambda: fakeredis.FakeStrictRedis())
     monkeypatch.setattr(pipeline, "_load_keywords", lambda s: [_FakeKw("вибори")])
 
     out = pipeline.filter_item.run(str(item.id))
@@ -35,7 +35,7 @@ def test_filter_item_passes_returns_news_id(db, monkeypatch):
 def test_filter_item_dropped_returns_none(db, monkeypatch):
     item = _persist_news(db, "Сьогодні гарна погода в місті", "h-drop")
     monkeypatch.setattr(pipeline, "SessionLocal", lambda: db_ctx(db))
-    monkeypatch.setattr(pipeline, "_redis", lambda: fakeredis.FakeStrictRedis())
+    monkeypatch.setattr(pipeline, "get_redis", lambda: fakeredis.FakeStrictRedis())
     monkeypatch.setattr(pipeline, "_load_keywords", lambda s: [_FakeKw("вибори")])
 
     out = pipeline.filter_item.run(str(item.id))

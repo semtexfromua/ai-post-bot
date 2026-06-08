@@ -230,13 +230,13 @@ celery_app = Celery("m4", broker=settings.REDIS_URL, backend=settings.REDIS_URL)
 #       worker_prefetch_multiplier=1, task_acks_late=True,
 #       task_soft_time_limit=120, task_time_limit=150,
 #       broker_transport_options={"visibility_timeout": 3600},
-#       task_routes={"app.tasks.pipeline.parse_source_tg": {"queue":"tg"},
-#                    "app.tasks.pipeline.publish_post": {"queue":"tg"}},  # решта → default
+#       task_routes={"app.tasks.pipeline.publish_post": {"queue":"tg"}},  # решта → default
 #       beat_schedule={"collect": {"task":"app.tasks.pipeline.collect_sources","schedule": crontab(minute="*/30")}}
 
 # pipeline.py  (усі таски — sync def, ім'я = шлях)
 @celery_app.task collect_sources() -> None
-    # Redis lock NX EX; для кожного enabled Source → parse_source.delay(source_id)
+    # Redis lock NX EX; для кожного enabled Source →
+    # parse_source.apply_async((source_id,), queue="tg"|"default") залежно від source.type
 @celery_app.task parse_source(source_id: str) -> None
     # get_parser(source).fetch(); upsert NewsItem за content_hash (дубль=skip);
     # для кожного НОВОГО → chain(filter_item.s(news_id) | generate_post.s() | publish_post.s())
@@ -250,7 +250,7 @@ def mark_published(db, post, message_id): ...
 def mark_failed(db, *, post=None, stage, message, tb=None, source_id=None, news_id=None): ...  # + ErrorLog row
 ```
 - Ланцюг зупиняється коли таска повертає None (наступна робить early-return).
-- Telethon parse іде через окрему таску-варіант на черзі `tg` (concurrency=1).
+- Єдиний статичний маршрут: `publish_post → tg`. Черга для `parse_source` визначається динамічно в `collect_sources` через `apply_async(queue="tg"|"default")` залежно від типу джерела.
 
 ## Тести (tests/)
 - `conftest.py`: sync `TestClient`, function-scoped Session через `app.dependency_overrides[get_db]` (rollback teardown), `fakeredis`, `respx` для openai/httpx, `FakeGenerator`, мок Telethon/aiogram.

@@ -37,10 +37,6 @@ def get_redis() -> redis_lib.Redis:
     return redis_lib.Redis.from_url(settings.REDIS_URL)
 
 
-# backward-compat alias used by filter_item tests
-_redis = get_redis
-
-
 def _load_keywords(session) -> list[Keyword]:
     return list(session.execute(select(Keyword)).scalars().all())
 
@@ -94,7 +90,7 @@ def filter_item(news_id: str) -> str | None:
         if item is None:
             return None
         keywords = _load_keywords(session)
-        ok = passes_filters(item, keywords, _redis(), settings)
+        ok = passes_filters(item, keywords, get_redis(), settings)
         return news_id if ok else None
 
 
