@@ -16,6 +16,26 @@ _ALLOWED = set(settings.ALLOWED_LANGUAGES)
 _MIN_CONFIDENCE = 0.65
 
 
+def language_verdict(text: str) -> str:
+    """Run lingua once and return 'allowed', 'disallowed', or 'unknown'.
+
+    - 'allowed'    – confident detection, language is in ALLOWED_LANGUAGES
+    - 'disallowed' – confident detection, language is NOT in ALLOWED_LANGUAGES
+    - 'unknown'    – empty text or confidence below _MIN_CONFIDENCE
+    """
+    if not text or not text.strip():
+        return "unknown"
+    values = _detector.compute_language_confidence_values(text)
+    if not values:
+        return "unknown"
+    top = values[0]
+    if top.value < _MIN_CONFIDENCE:
+        return "unknown"
+    # iso_code_639_1 is an IsoCode639_1 enum; .name is the 2-letter code.
+    code = top.language.iso_code_639_1.name.lower()
+    return "allowed" if code in _ALLOWED else "disallowed"
+
+
 def detect_language(text: str) -> str | None:
     """lingua detection restricted to ALLOWED_LANGUAGES.
 
