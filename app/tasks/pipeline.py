@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import traceback
 import uuid
 
@@ -140,7 +141,10 @@ def generate_post(self, news_id: str | None) -> str | None:
             text = draft.text
             if is_flagged(text):
                 raise ValueError("moderation flagged generated text")
-            if not text or len(text) > settings.POST_MAX_LEN:
+            # Guard the html.escape()d payload the publisher actually sends, not the
+            # raw draft — escaping grows '<','>','&' and could push a draft that is
+            # under the limit over Telegram's 4096 cap (MessageTooLong).
+            if not text or len(html.escape(text)) > settings.POST_MAX_LEN:
                 raise ValueError("generated text empty or exceeds POST_MAX_LEN")
             mark_generated(session, post, text)
             logger.info("generate.ok", post_id=str(post.id), len=len(text))

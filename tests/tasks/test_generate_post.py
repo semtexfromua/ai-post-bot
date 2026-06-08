@@ -260,6 +260,30 @@ def test_generate_post_over_length_marks_failed(db, monkeypatch):
     assert len(logs) == 1
 
 
+def test_generate_post_escaped_length_over_limit_marks_failed(db, monkeypatch):
+    """The length guard must measure the html.escape()d payload the publisher
+    actually sends, not the raw draft: a draft at the limit made of '<' escapes
+    to 4x and would be rejected by Telegram (MessageTooLong)."""
+    import uuid
+
+    from app.core.config import settings
+
+    item = _persist_news(db)
+    monkeypatch.setattr(pipeline, "SessionLocal", lambda: db_ctx(db))
+    raw = "<" * settings.POST_MAX_LEN  # raw == limit (passes a raw-len guard)
+    monkeypatch.setattr(
+        pipeline,
+        "build_generator",
+        lambda: _Gen(PostDraft(text=raw, language="uk")),
+    )
+    monkeypatch.setattr(pipeline, "is_flagged", lambda text: False)
+
+    post_id = pipeline.generate_post.run(str(item.id))
+
+    post = db.get(Post, uuid.UUID(post_id))
+    assert post.status == PostStatus.failed
+
+
 def test_is_flagged_skipped_in_fake_mode(monkeypatch):
     monkeypatch.setenv("USE_FAKE_AI", "1")
     with patch.object(moderation_module, "_client") as mock_client:
