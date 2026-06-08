@@ -71,3 +71,46 @@ def test_delete_source_204(client):
     resp = client.delete(f"/api/v1/sources/{created['id']}")
     assert resp.status_code == 204
     assert client.get(f"/api/v1/sources/{created['id']}").status_code == 404
+
+
+def test_create_source_rejects_file_scheme(client):
+    resp = client.post(
+        "/api/v1/sources",
+        json={"type": "site", "name": "x", "url": "file:///etc/passwd"},
+    )
+    assert resp.status_code == 422
+
+
+def test_create_source_allows_tg_username(client):
+    resp = client.post(
+        "/api/v1/sources",
+        json={"type": "tg", "name": "c", "url": "@chan"},
+    )
+    assert resp.status_code == 201
+
+
+def test_create_source_allows_https(client):
+    resp = client.post(
+        "/api/v1/sources",
+        json={"type": "site", "name": "h", "url": "https://example.com/feed"},
+    )
+    assert resp.status_code == 201
+
+
+def test_update_source_rejects_file_scheme(client):
+    created = client.post(
+        "/api/v1/sources",
+        json={"type": "site", "name": "U", "url": "https://u"},
+    ).json()
+    resp = client.patch(
+        f"/api/v1/sources/{created['id']}",
+        json={"url": "file:///x"},
+    )
+    assert resp.status_code == 422
+    # patch without url still works
+    resp2 = client.patch(
+        f"/api/v1/sources/{created['id']}",
+        json={"name": "Updated"},
+    )
+    assert resp2.status_code == 200
+    assert resp2.json()["name"] == "Updated"
