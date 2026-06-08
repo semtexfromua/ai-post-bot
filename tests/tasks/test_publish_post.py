@@ -102,6 +102,24 @@ def test_publish_post_retry_after_honors_cooldown(generated_post, db):
     assert db.query(ErrorLog).count() == 0
 
 
+def test_publish_post_retry_after_countdown_capped(generated_post, db):
+    """A huge flood-wait is capped below the broker visibility_timeout (3600s)
+    so Redis can't redeliver the task mid-wait and double-send."""
+    err = TelegramRetryAfter(method=MagicMock(), message="flood", retry_after=99999)
+    sentinel = Retry("retrying")
+    with (
+        _patch_session(db),
+        patch.object(pipeline.publisher, "publish", side_effect=err),
+        patch.object(
+            pipeline.publish_post, "retry", side_effect=sentinel
+        ) as mock_retry,
+    ):
+        with pytest.raises(Retry):
+            pipeline.publish_post.run(str(generated_post.id))
+
+    assert mock_retry.call_args.kwargs["countdown"] <= 3000
+
+
 def test_publish_post_forbidden_marks_failed_and_logs(generated_post, db):
     err = TelegramForbiddenError(method=MagicMock(), message="bot kicked")
     with (

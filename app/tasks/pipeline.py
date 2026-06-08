@@ -209,6 +209,10 @@ def publish_post(self, post_id: str | None) -> None:
                 if isinstance(exc, TelegramRetryAfter)
                 else 2**self.request.retries
             )
+            # Cap below the broker visibility_timeout (3600s, celery_app.py) so a
+            # long Telegram flood-wait can't let Redis redeliver this task to
+            # another consumer mid-wait and double-send.
+            countdown = min(countdown, 3000)
             raise self.retry(countdown=countdown, exc=exc)
         except (TelegramForbiddenError, TelegramBadRequest) as exc:
             mark_failed(
