@@ -1,0 +1,122 @@
+name: m4
+
+x-app-image: &app-image
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: m4-app:latest
+
+x-app-env: &app-env
+  ENVIRONMENT: prod
+  DATABASE_URL: postgresql+psycopg://m4:m4@db:5432/m4
+  REDIS_URL: redis://redis:6379/0
+  OPENAI_API_KEY: ${OPENAI_API_KEY}
+  OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+  TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+  TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+  TELETHON_STRING_SESSION: ${TELETHON_STRING_SESSION}
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+  TELEGRAM_CHANNEL_ID: ${TELEGRAM_CHANNEL_ID}
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: m4
+      POSTGRES_PASSWORD: m4
+      POSTGRES_DB: m4
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U m4 -d m4"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "6379:6379"
+
+  migrate:
+    <<: *app-image
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *app-image
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *app-env
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/health').status==200 else sys.exit(1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker-default:
+    <<: *app-image
+    command: ["celery", "-A", "app.tasks.celery_app", "worker", "-Q", "default", "-c", "4", "-l", "info"]
+    environment:
+      <<: *app-env
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker-tg:
+    <<: *app-image
+    command: ["celery", "-A", "app.tasks.celery_app", "worker", "-Q", "tg", "-c", "1", "-l", "info"]
+    environment:
+      <<: *app-env
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  beat:
+    <<: *app-image
+    command: ["celery", "-A", "app.tasks.celery_app", "beat", "-l", "info"]
+    environment:
+      <<: *app-env
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  flower:
+    <<: *app-image
+    command: ["celery", "-A", "app.tasks.celery_app", "flower", "--port=5555"]
+    environment:
+      <<: *app-env
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
