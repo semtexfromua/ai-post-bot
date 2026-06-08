@@ -58,9 +58,7 @@ def test_generate_adhoc_text_creates_news_and_enqueues(client, db_session):
         "app.api.v1.routers.generate.generate_post.delay",
         return_value=fake_result,
     ) as delay:
-        resp = client.post(
-            "/api/v1/generate", json={"text": "Цікава новина про AI"}
-        )
+        resp = client.post("/api/v1/generate", json={"text": "Цікава новина про AI"})
 
     assert resp.status_code == 202
     assert resp.json()["task_id"] == "t-x"

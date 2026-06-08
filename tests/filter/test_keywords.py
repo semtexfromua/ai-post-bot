@@ -42,9 +42,7 @@ def test_multiword_keyword_requires_all_tokens():
     # a phrase keyword must match only when ALL its words are present, not just
     # the first token (README documents phrase keywords like "штучний інтелект").
     kws = [_kw("штучний інтелект", lang="uk")]
-    assert (
-        matches_keywords("новини про штучний інтелект сьогодні", kws, "any") is True
-    )
+    assert matches_keywords("новини про штучний інтелект сьогодні", kws, "any") is True
     assert matches_keywords("сьогодні був штучний день", kws, "any") is False
 
 
