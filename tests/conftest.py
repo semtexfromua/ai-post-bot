@@ -33,6 +33,7 @@ def db_session():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    Base.metadata.create_all(engine)
     TestingSession = sessionmaker(engine, expire_on_commit=False, class_=Session)
     session = TestingSession()
     try:
