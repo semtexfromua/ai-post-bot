@@ -49,16 +49,25 @@ def test_generate_news_id_404_when_missing(client):
     delay.assert_not_called()
 
 
-def test_generate_adhoc_text_enqueues_none(client):
+def test_generate_adhoc_text_creates_news_and_enqueues(client, db_session):
+    """Ad-hoc text -> a synthetic NewsItem is persisted and its id enqueued for
+    generation (spec §3/§6 'вручну протестувати генерацію')."""
     fake_result = MagicMock()
     fake_result.id = "t-x"
     with patch(
         "app.api.v1.routers.generate.generate_post.delay",
         return_value=fake_result,
     ) as delay:
-        resp = client.post("/api/v1/generate", json={"text": "foo"})
+        resp = client.post(
+            "/api/v1/generate", json={"text": "Цікава новина про AI"}
+        )
 
     assert resp.status_code == 202
-    body = resp.json()
-    assert body["task_id"] == "t-x"
-    delay.assert_called_once_with(None)
+    assert resp.json()["task_id"] == "t-x"
+    delay.assert_called_once()
+    (arg,) = delay.call_args.args
+    assert arg is not None  # the synthetic NewsItem id, not None
+
+    news = db_session.query(NewsItem).filter_by(source="manual").one()
+    assert str(news.id) == arg
+    assert news.raw_text == "Цікава новина про AI"
