@@ -152,6 +152,46 @@ def test_publish_post_server_error_retries(generated_post, db):
     assert db.query(ErrorLog).count() == 0
 
 
+def test_publish_post_server_error_exhausted_marks_failed(generated_post, db):
+    """TelegramServerError at retry exhaustion -> Post(failed) + ErrorLog (spec §4.6)."""
+    err = TelegramServerError(method=MagicMock(), message="internal server error")
+    task = pipeline.publish_post
+    with (
+        _patch_session(db),
+        patch.object(pipeline.publisher, "publish", side_effect=err),
+    ):
+        task.push_request(retries=task.max_retries)
+        try:
+            task.run(str(generated_post.id))
+        finally:
+            task.pop_request()
+
+    db.refresh(generated_post)
+    assert generated_post.status == PostStatus.failed
+    logs = db.query(ErrorLog).filter_by(stage=ErrorStage.publish).all()
+    assert len(logs) == 1
+    assert logs[0].post_id == generated_post.id
+
+
+def test_publish_post_retry_after_exhausted_marks_failed(generated_post, db):
+    """TelegramRetryAfter at retry exhaustion -> Post(failed) + ErrorLog (spec §4.6)."""
+    err = TelegramRetryAfter(method=MagicMock(), message="flood", retry_after=10)
+    task = pipeline.publish_post
+    with (
+        _patch_session(db),
+        patch.object(pipeline.publisher, "publish", side_effect=err),
+    ):
+        task.push_request(retries=task.max_retries)
+        try:
+            task.run(str(generated_post.id))
+        finally:
+            task.pop_request()
+
+    db.refresh(generated_post)
+    assert generated_post.status == PostStatus.failed
+    assert db.query(ErrorLog).filter_by(stage=ErrorStage.publish).count() == 1
+
+
 def test_publish_post_bad_request_marks_failed(generated_post, db):
     """TelegramBadRequest -> Post(status=failed) + ErrorLog(stage=publish); no retry."""
     err = TelegramBadRequest(method=MagicMock(), message="bad request")

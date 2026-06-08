@@ -188,10 +188,28 @@ def publish_post(self, post_id: str | None) -> None:
             message_id = publisher.publish(
                 settings.TELEGRAM_CHANNEL_ID, post.generated_text
             )
-        except TelegramRetryAfter as exc:
-            raise self.retry(countdown=exc.retry_after, exc=exc)
-        except TelegramServerError as exc:
-            raise self.retry(countdown=2**self.request.retries, exc=exc)
+        except (TelegramRetryAfter, TelegramServerError) as exc:
+            if self.request.retries >= (self.max_retries or 0):
+                # retries exhausted -> mark failed + ErrorLog (spec §4 invariant 6),
+                # symmetric with generate_post; never leave a post stuck in `generated`.
+                mark_failed(
+                    db,
+                    post=post,
+                    stage=ErrorStage.publish,
+                    message=f"Telegram transient error, retries exhausted: {exc}",
+                    tb=traceback.format_exc(),
+                )
+                db.commit()
+                logger.warning(
+                    "publish.failed", post_id=post_id, reason="retries_exhausted"
+                )
+                return
+            countdown = (
+                exc.retry_after
+                if isinstance(exc, TelegramRetryAfter)
+                else 2**self.request.retries
+            )
+            raise self.retry(countdown=countdown, exc=exc)
         except (TelegramForbiddenError, TelegramBadRequest) as exc:
             mark_failed(
                 db,
