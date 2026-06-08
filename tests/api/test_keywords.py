@@ -43,3 +43,9 @@ def test_delete_keyword_204(client):
     resp = client.delete(f"/api/v1/keywords/{created['id']}")
     assert resp.status_code == 204
     assert client.get(f"/api/v1/keywords/{created['id']}").status_code == 404
+
+
+def test_create_keyword_duplicate_word_returns_409(client):
+    assert client.post("/api/v1/keywords", json={"word": "gpt"}).status_code == 201
+    resp = client.post("/api/v1/keywords", json={"word": "gpt"})
+    assert resp.status_code == 409

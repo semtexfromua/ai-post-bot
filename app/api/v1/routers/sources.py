@@ -1,7 +1,8 @@
 import uuid
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.api.v1.deps import PaginationDep, SessionDep, get_source_or_404
 from app.models.source import Source
@@ -27,7 +28,13 @@ def list_sources(db: SessionDep, pagination: PaginationDep) -> Page[SourceRead]:
 def create_source(payload: SourceCreate, db: SessionDep) -> Source:
     source = Source(**payload.model_dump())
     db.add(source)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="source url already exists"
+        )
     return source
 
 

@@ -114,3 +114,15 @@ def test_update_source_rejects_file_scheme(client):
     )
     assert resp2.status_code == 200
     assert resp2.json()["name"] == "Updated"
+
+
+def test_create_source_duplicate_url_returns_409(client):
+    payload = {
+        "type": "site",
+        "name": "DOU",
+        "url": "https://dou.ua/rss/all.xml",
+        "enabled": True,
+    }
+    assert client.post("/api/v1/sources", json=payload).status_code == 201
+    resp = client.post("/api/v1/sources", json=payload)
+    assert resp.status_code == 409

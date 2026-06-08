@@ -1,7 +1,8 @@
 import uuid
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.api.v1.deps import PaginationDep, SessionDep, get_keyword_or_404
 from app.models.keyword import Keyword
@@ -27,7 +28,13 @@ def list_keywords(db: SessionDep, pagination: PaginationDep) -> Page[KeywordRead
 def create_keyword(payload: KeywordCreate, db: SessionDep) -> Keyword:
     keyword = Keyword(**payload.model_dump())
     db.add(keyword)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="keyword already exists"
+        )
     return keyword
 
 
