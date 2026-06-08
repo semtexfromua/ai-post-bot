@@ -15,7 +15,7 @@ def test_settings_load_from_env(monkeypatch):
     monkeypatch.setenv("TELEGRAM_CHANNEL_ID", "-1009999")
 
     reloaded = importlib.reload(config_module)
-    settings = reloaded.Settings()
+    settings = reloaded.Settings(_env_file=None)
 
     assert settings.ENVIRONMENT == "prod"
     assert settings.DATABASE_URL == "postgresql+psycopg2://u:p@db:5432/m4"
@@ -45,14 +45,14 @@ def test_prod_raises_on_empty_secrets(monkeypatch):
         import importlib as _il
 
         _il.reload(config_module)
-        config_module.Settings()
+        config_module.Settings(_env_file=None)
 
 
 def test_local_with_empty_secrets_does_not_raise(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "local")
 
     reloaded = importlib.reload(config_module)
-    settings = reloaded.Settings()  # must not raise
+    settings = reloaded.Settings(_env_file=None)  # must not raise
     assert settings.ENVIRONMENT == "local"
 
 
@@ -61,7 +61,7 @@ def test_openai_base_url_and_moderation_toggle(monkeypatch):
     monkeypatch.setenv("MODERATION_ENABLED", "false")
 
     reloaded = importlib.reload(config_module)
-    settings = reloaded.Settings()
+    settings = reloaded.Settings(_env_file=None)
 
     assert settings.OPENAI_BASE_URL == "https://openrouter.ai/api/v1"
     assert settings.MODERATION_ENABLED is False
@@ -76,6 +76,6 @@ def test_secrets_are_not_plain_in_repr(monkeypatch):
     monkeypatch.setenv("TELEGRAM_CHANNEL_ID", "1")
 
     reloaded = importlib.reload(config_module)
-    settings = reloaded.Settings()
+    settings = reloaded.Settings(_env_file=None)
 
     assert "sk-secret" not in repr(settings.OPENAI_API_KEY)
