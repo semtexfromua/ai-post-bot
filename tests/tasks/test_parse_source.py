@@ -2,6 +2,8 @@ import uuid
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
+from app.models.base import ErrorStage
+from app.models.error_log import ErrorLog
 from app.models.news_item import NewsItem
 from app.models.source import Source
 from app.news_parser.base import NewsItemData
@@ -101,6 +103,26 @@ def test_parse_source_unknown_source_id_is_noop(db_session):
         pipeline.parse_source(str(uuid.uuid4()))
 
     mock_get_parser.assert_not_called()
+    mock_chain.assert_not_called()
+
+
+def test_parse_source_fetch_failure_logs_error_and_does_not_raise(db_session):
+    """parser.fetch raises -> task does NOT raise; exactly one ErrorLog(stage=parse)."""
+    src = _seed_source(db_session)
+    fake_parser = MagicMock()
+    fake_parser.fetch.side_effect = RuntimeError("boom")
+
+    with (
+        patch.object(pipeline, "SessionLocal", return_value=db_session),
+        patch.object(pipeline, "get_parser", return_value=fake_parser),
+        patch.object(pipeline, "chain") as mock_chain,
+    ):
+        pipeline.parse_source(str(src.id))  # must not raise
+
+    logs = db_session.query(ErrorLog).filter_by(stage=ErrorStage.parse).all()
+    assert len(logs) == 1
+    assert logs[0].source_id == src.id
+    assert "boom" in logs[0].message
     mock_chain.assert_not_called()
 
 

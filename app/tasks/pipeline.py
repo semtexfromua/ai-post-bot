@@ -139,30 +139,45 @@ def parse_source(source_id: str) -> None:
         if source is None or not source.enabled:
             return
 
-        parser = get_parser(source)
-        items = parser.fetch(source)
-
         new_ids: list[str] = []
-        for data in items:
-            chash = content_hash(data.title, data.url)
-            exists = db.query(NewsItem).filter(NewsItem.content_hash == chash).first()
-            if exists is not None:
-                continue
-            news = NewsItem(
-                title=data.title,
-                url=data.url,
-                summary=data.summary,
-                source=data.source,
-                published_at=data.published_at,
-                raw_text=data.raw_text,
-                content_hash=chash,
-            )
-            db.add(news)
-            db.flush()
-            new_ids.append(str(news.id))
+        try:
+            parser = get_parser(source)
+            items = parser.fetch(source)
 
-        # persist conditional-GET validators / last_seen_msg_id mutated by parser
-        db.commit()
+            for data in items:
+                chash = content_hash(data.title, data.url)
+                exists = (
+                    db.query(NewsItem).filter(NewsItem.content_hash == chash).first()
+                )
+                if exists is not None:
+                    continue
+                news = NewsItem(
+                    title=data.title,
+                    url=data.url,
+                    summary=data.summary,
+                    source=data.source,
+                    published_at=data.published_at,
+                    raw_text=data.raw_text,
+                    content_hash=chash,
+                )
+                db.add(news)
+                db.flush()
+                new_ids.append(str(news.id))
+
+            # persist conditional-GET validators / last_seen_msg_id mutated by parser
+            db.commit()
+        except Exception as exc:  # noqa: BLE001 — one bad source must not crash the batch
+            db.rollback()
+            mark_failed(
+                db,
+                post=None,
+                stage=ErrorStage.parse,
+                source_id=source.id,
+                message=str(exc),
+                tb=traceback.format_exc(),
+            )
+            db.commit()
+            return
 
     for news_id in new_ids:
         chain(filter_item.s(news_id) | generate_post.s() | publish_post.s()).delay()
