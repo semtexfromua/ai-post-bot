@@ -30,7 +30,7 @@ def test_settings_load_from_env(monkeypatch):
     assert settings.TELETHON_STRING_SESSION.get_secret_value() == "sess-xyz"
     assert settings.TELEGRAM_BOT_TOKEN.get_secret_value() == "111:bot-token"
     assert settings.TELEGRAM_CHANNEL_ID == -1009999
-    assert settings.ALLOWED_LANGUAGES == ["uk", "ru", "en"]
+    assert settings.ALLOWED_LANGUAGES == ["uk", "en"]
     assert settings.DEDUP_TTL_SECONDS == 604800
     assert settings.KEYWORD_MATCH_MODE == "any"
     assert settings.POST_MAX_LEN == 4096
