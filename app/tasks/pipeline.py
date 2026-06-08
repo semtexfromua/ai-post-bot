@@ -18,7 +18,7 @@ from app.ai.moderation import is_flagged
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.filter.service import passes_filters
-from app.models.base import ErrorStage, PostStatus
+from app.models.base import ErrorStage, PostStatus, SourceType
 from app.models.keyword import Keyword
 from app.models.news_item import NewsItem
 from app.models.post import Post
@@ -29,9 +29,16 @@ from app.tasks.celery_app import celery_app
 from app.tasks.state import mark_failed, mark_generated, mark_published
 from app.telegram import publisher
 
+LOCK_KEY = "m4:lock:collect"
+LOCK_TTL_SECONDS = 25 * 60  # < beat interval (30m), > a full cycle
 
-def _redis() -> redis_lib.Redis:
+
+def get_redis() -> redis_lib.Redis:
     return redis_lib.Redis.from_url(settings.REDIS_URL)
+
+
+# backward-compat alias used by filter_item tests
+_redis = get_redis
 
 
 def _load_keywords(session) -> list[Keyword]:
@@ -165,3 +172,21 @@ def parse_source(source_id: str) -> None:
 
     for news_id in new_ids:
         chain(filter_item.s(news_id) | generate_post.s() | publish_post.s()).delay()
+
+
+@celery_app.task(name="app.tasks.pipeline.collect_sources")
+def collect_sources() -> None:
+    """Orchestrator: acquire lock, then enqueue parse_source per enabled source.
+
+    tg sources go to the `tg` queue (single-concurrency Telethon constraint);
+    site/RSS sources go to the `default` queue.
+    """
+    r = get_redis()
+    acquired = r.set(LOCK_KEY, "1", nx=True, ex=LOCK_TTL_SECONDS)
+    if not acquired:
+        return  # previous cycle still running
+    with SessionLocal() as db:
+        sources = db.scalars(select(Source).where(Source.enabled.is_(True))).all()
+        for source in sources:
+            queue = "tg" if source.type == SourceType.tg else "default"
+            parse_source.apply_async((str(source.id),), queue=queue)
