@@ -125,7 +125,7 @@ beat */30 → collect_sources (orchestrator, default-черга)
 |---|---|---|
 | CRUD | `/api/v1/sources` | джерела (site/tg) |
 | CRUD | `/api/v1/keywords` | ключові слова/фільтри |
-| GET | `/api/v1/posts` | історія постів: `{items,total,limit,offset}` + `?status=` |
+| GET | `/api/v1/posts` | історія постів: `{data,count}` (Page envelope) + `?status=&limit=&offset=` |
 | POST | `/api/v1/generate` | поставити генерацію для `news_id` (або ad-hoc текст) → `202` + id |
 | GET | `/api/v1/errors` | історія помилок (з ErrorLog) |
 | GET | `/health` | healthcheck (без версії) |
@@ -142,7 +142,9 @@ beat */30 → collect_sources (orchestrator, default-черга)
 **`ai/`** — `PostGenerator` Protocol + `OpenAIGenerator`
 (`chat.completions.parse` → `PostDraft{text, language, hashtags?}`).
 Промпт: стабільний system (роль/формат/«пиши мовою джерела»/довжина) + user (поля NewsItem).
-`gpt-4o-mini` через env, `temperature≈0.75`, `max_completion_tokens≈280`.
+`gpt-4o-mini` через env, `temperature≈0.75`, `max_completion_tokens=512` (узгоджено з
+промптом «стисло, ~600 символів» — занизький кап обрізав валідні пости в
+`LengthFinishReasonError`; POST_MAX_LEN=4096 лишається жорстким гардом, не ціллю генерації).
 Moderation-гейт (`omni-moderation-latest`, безкоштовний) + Python-перевірка довжини
 перед `generated`. У тестах — `FakeGenerator`, без мережі.
 
@@ -222,7 +224,7 @@ Moderation-гейт (`omni-moderation-latest`, безкоштовний) + Pytho
 
 1. **Sources CRUD:** create/list/update/delete Source через API працює; Read-схема не дає клієнту id/серверні поля.
 2. **Keywords CRUD:** аналогічно.
-3. **GET /api/posts:** повертає `{items,total,limit,offset}`; `?status=failed` фільтрує.
+3. **GET /api/posts:** повертає `{data,count}` (Page-envelope, узгоджено з контрактом); `?status=failed` фільтрує.
 4. **POST /api/generate:** повертає `202` + id, ставить таску, створює Post.
 5. **Parse (RSS):** дає NewsItem з title/url/summary/published_at(UTC); повторний url → новий NewsItem не створюється (UNIQUE content_hash).
 6. **Filter:** айтем без збігу keyword — викидається; збіг **інфлектованою** формою (через лематизацію) — проходить; високовпевнена не-дозволена мова — дроп; уже бачений хеш (Redis) — дроп.

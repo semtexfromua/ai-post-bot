@@ -157,6 +157,7 @@ def get_db() -> Generator[Session, None, None]:
 `ENVIRONMENT: Literal["local","prod"]="local"`; DB: `DATABASE_URL: str` (default sqlite `sqlite:///./app.db`; у compose — postgres);
 `REDIS_URL: str="redis://localhost:6379/0"`;
 `OPENAI_API_KEY: SecretStr`; `OPENAI_MODEL: str="gpt-4o-mini"`; `OPENAI_TIMEOUT: int=30`;
+`OPENAI_BASE_URL: str|None=None` (OpenAI-сумісний ендпоінт, напр. OpenRouter); `MODERATION_ENABLED: bool=True` (вимк. для OpenRouter — нема /moderations);
 `TELEGRAM_API_ID: int`; `TELEGRAM_API_HASH: SecretStr`; `TELETHON_STRING_SESSION: SecretStr`;
 `TELEGRAM_BOT_TOKEN: SecretStr`; `TELEGRAM_CHANNEL_ID: int`;
 `ALLOWED_LANGUAGES: list[str]=["uk","ru","en"]`; `DEDUP_TTL_SECONDS: int=604800`; `KEYWORD_MATCH_MODE: Literal["any","all"]="any"`;
@@ -213,7 +214,7 @@ def build_generator() -> PostGenerator   # обирає OpenAI/Fake за env
 def is_flagged(text: str) -> bool         # omni-moderation-latest; у тестах мок
 ```
 - Промпт: system (роль/формат/«мовою джерела»/довжина ≤ POST_MAX_LEN/емодзі+CTA) + user (поля NewsItem).
-- `OPENAI_MODEL`, temperature≈0.75, max_completion_tokens≈280.
+- `OPENAI_MODEL`, temperature≈0.75, max_completion_tokens=512 (вистачає для стислого поста; занизький кап обрізав валідні пости). `OPENAIGenerator` ловить `LengthFinishReasonError` → чистий `ValueError`.
 
 ## telegram контракт (app/telegram/publisher.py)
 ```python
