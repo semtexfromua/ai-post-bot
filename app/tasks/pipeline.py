@@ -51,9 +51,7 @@ def _load_keywords(session) -> list[Keyword]:
     return list(session.execute(select(Keyword)).scalars().all())
 
 
-@celery_app.task(
-    bind=True, name="app.tasks.pipeline.generate_post", max_retries=5
-)
+@celery_app.task(bind=True, name="app.tasks.pipeline.generate_post", max_retries=5)
 def generate_post(self, news_id: str | None) -> str | None:
     """Generate a post for a NewsItem.
 
@@ -75,9 +73,7 @@ def generate_post(self, news_id: str | None) -> str | None:
         try:
             draft = build_generator().generate(item)
         except _OPENAI_TRANSIENT as exc:
-            raise self.retry(
-                exc=exc, countdown=2**self.request.retries, max_retries=5
-            )
+            raise self.retry(exc=exc, countdown=2**self.request.retries, max_retries=5)
         except Exception as exc:  # non-transient generation failure (e.g. refusal)
             post = Post(news_id=item.id, generated_text="", status=PostStatus.new)
             session.add(post)
