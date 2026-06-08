@@ -44,3 +44,18 @@ def test_generate_news_id_404_when_missing(client):
         )
     assert resp.status_code == 404
     delay.assert_not_called()
+
+
+def test_generate_adhoc_text_enqueues_none(client):
+    fake_result = MagicMock()
+    fake_result.id = "t-x"
+    with patch(
+        "app.api.v1.routers.generate.generate_post.delay",
+        return_value=fake_result,
+    ) as delay:
+        resp = client.post("/api/v1/generate", json={"text": "foo"})
+
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["task_id"] == "t-x"
+    delay.assert_called_once_with(None)

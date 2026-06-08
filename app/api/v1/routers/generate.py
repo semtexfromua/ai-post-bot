@@ -18,5 +18,7 @@ def enqueue_generate(payload: GenerateRequest, db: SessionDep) -> GenerateRespon
                 status_code=status.HTTP_404_NOT_FOUND, detail="NewsItem not found"
             )
         news_id_arg = str(payload.news_id)
+    # payload.text is an ad-hoc prompt forwarded to the generation pipeline in a later phase;
+    # for now the task receives news_id_arg=None for ad-hoc requests.
     result = generate_post.delay(news_id_arg)
     return GenerateResponse(task_id=result.id, post_id=None)
