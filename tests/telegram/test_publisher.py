@@ -19,7 +19,7 @@ def test_publish_sends_and_returns_message_id():
     bot = _fake_bot_cm(send_message)
 
     with patch.object(publisher, "Bot", return_value=bot) as bot_cls:
-        result = publisher.publish(-1009999, "<b>hi</b>")
+        result = publisher.publish(-1009999, "plain text")
 
     assert result == 4242
     # Bot constructed with the token (positional) inside the coroutine
@@ -27,7 +27,22 @@ def test_publish_sends_and_returns_message_id():
     send_message.assert_awaited_once()
     kwargs = send_message.await_args.kwargs
     assert kwargs["chat_id"] == -1009999
-    assert kwargs["text"] == "<b>hi</b>"
+    assert kwargs["text"] == "plain text"
+
+
+def test_publish_html_escapes_text():
+    """Bare <, >, & in source text must be escaped before send_message (HTML parse_mode)."""
+    sent = MagicMock()
+    sent.message_id = 1
+    send_message = AsyncMock(return_value=sent)
+    bot = _fake_bot_cm(send_message)
+
+    raw = "Ціна < 1000$ & більше > раніше 🎯"
+    with patch.object(publisher, "Bot", return_value=bot):
+        publisher.publish(-100, raw)
+
+    kwargs = send_message.await_args.kwargs
+    assert kwargs["text"] == "Ціна &lt; 1000$ &amp; більше &gt; раніше 🎯"
 
 
 def test_publish_propagates_send_errors():

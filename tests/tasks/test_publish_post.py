@@ -3,7 +3,12 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
-from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
+from aiogram.exceptions import (
+    TelegramBadRequest,
+    TelegramForbiddenError,
+    TelegramRetryAfter,
+    TelegramServerError,
+)
 from celery.exceptions import Retry
 
 from app.models.base import ErrorStage, PostStatus
@@ -111,3 +116,55 @@ def test_publish_post_forbidden_marks_failed_and_logs(generated_post, db):
     assert len(logs) == 1
     assert logs[0].stage == ErrorStage.publish
     assert logs[0].post_id == generated_post.id
+
+
+def test_publish_post_already_has_tg_message_id_skips(generated_post, db):
+    """Belt-and-suspenders: generated post with tg_message_id set must not re-publish."""
+    generated_post.tg_message_id = 9999
+    db.commit()
+
+    with (
+        _patch_session(db),
+        patch.object(pipeline.publisher, "publish") as pub,
+    ):
+        pipeline.publish_post.run(str(generated_post.id))
+
+    pub.assert_not_called()
+
+
+def test_publish_post_server_error_retries(generated_post, db):
+    """TelegramServerError -> self.retry is invoked; post stays generated; no ErrorLog."""
+    err = TelegramServerError(method=MagicMock(), message="internal server error")
+    sentinel = Retry("retrying")
+    with (
+        _patch_session(db),
+        patch.object(pipeline.publisher, "publish", side_effect=err),
+        patch.object(
+            pipeline.publish_post, "retry", side_effect=sentinel
+        ) as mock_retry,
+    ):
+        with pytest.raises(Retry):
+            pipeline.publish_post.run(str(generated_post.id))
+
+    mock_retry.assert_called_once()
+    db.refresh(generated_post)
+    assert generated_post.status == PostStatus.generated
+    assert db.query(ErrorLog).count() == 0
+
+
+def test_publish_post_bad_request_marks_failed(generated_post, db):
+    """TelegramBadRequest -> Post(status=failed) + ErrorLog(stage=publish); no retry."""
+    err = TelegramBadRequest(method=MagicMock(), message="bad request")
+    with (
+        _patch_session(db),
+        patch.object(pipeline.publisher, "publish", side_effect=err),
+        patch.object(pipeline.publish_post, "retry") as mock_retry,
+    ):
+        pipeline.publish_post.run(str(generated_post.id))
+
+    mock_retry.assert_not_called()
+    db.refresh(generated_post)
+    assert generated_post.status == PostStatus.failed
+    logs = db.query(ErrorLog).all()
+    assert len(logs) == 1
+    assert logs[0].stage == ErrorStage.publish

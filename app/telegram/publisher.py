@@ -1,4 +1,5 @@
 import asyncio
+import html
 
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
@@ -16,7 +17,7 @@ async def _publish(channel_id: int, text: str) -> int:
         ),
     )
     async with bot:
-        message = await bot.send_message(chat_id=channel_id, text=text)
+        message = await bot.send_message(chat_id=channel_id, text=html.escape(text))
     return message.message_id
 
 

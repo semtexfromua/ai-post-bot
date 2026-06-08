@@ -159,6 +159,8 @@ def publish_post(self, post_id: str | None) -> None:
         post = db.get(Post, uuid.UUID(post_id))
         if post is None or post.status != PostStatus.generated:
             return  # idempotent: only publish a generated post
+        if post.tg_message_id is not None:
+            return  # belt-and-suspenders: already published, never re-send
         try:
             message_id = publisher.publish(
                 settings.TELEGRAM_CHANNEL_ID, post.generated_text
