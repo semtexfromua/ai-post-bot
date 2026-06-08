@@ -50,6 +50,9 @@ async def _read(source: Source) -> list[NewsItemData]:
         ):
             messages.append(msg)
 
+    # Public-channel message permalink base, e.g. "@ai_channel" -> "t.me/ai_channel".
+    username = source.url.lstrip("@")
+
     items: list[NewsItemData] = []
     max_id = source.last_seen_msg_id or 0
     for msg in messages:
@@ -63,7 +66,10 @@ async def _read(source: Source) -> list[NewsItemData]:
         items.append(
             NewsItemData(
                 title=_title_from(text),
-                url=None,
+                # Per-message permalink: a real clickable URL AND a unique dedup
+                # key, so two posts sharing a first line don't collide on
+                # content_hash (which would silently drop the second).
+                url=f"https://t.me/{username}/{msg.id}",
                 summary=None,
                 source=source.name,
                 published_at=published_at,

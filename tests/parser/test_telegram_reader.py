@@ -84,6 +84,48 @@ def test_telegram_reader_incremental_resolve_and_min_id():
     assert items[0].source == "AI Channel"
 
 
+def test_telegram_reader_url_carries_message_id_for_dedup():
+    """Two distinct messages sharing an identical first line must not collide on
+    content_hash: each item gets a per-message t.me URL so the dedup key differs."""
+    entity = SimpleNamespace(id=555, title="AI Channel")
+    messages = [
+        _make_message(201, "📢 Реклама\nдеталі A"),
+        _make_message(202, "📢 Реклама\nдеталі B"),
+    ]
+    fake_client = _make_fake_client(entity, messages)
+    src = _make_source(last_seen=200)
+    with patch(
+        "app.news_parser.telegram_reader._build_client", return_value=fake_client
+    ):
+        items = TelegramReader().fetch(src)
+
+    assert len(items) == 2
+    urls = {i.url for i in items}
+    assert len(urls) == 2  # distinct -> distinct content_hash, no false collision
+    assert {str(i.url).rsplit("/", 1)[-1] for i in items} == {"201", "202"}
+    assert all(str(i.url).startswith("https://t.me/ai_channel/") for i in items)
+
+
+def test_telegram_reader_caches_entity_across_fetches():
+    """resolve-once + cache (spec §8.2 / AC10): a second fetch in the same process
+    must reuse the cached entity, never re-resolving @username every tick."""
+    entity = SimpleNamespace(id=555, title="AI Channel")
+    src = _make_source(last_seen=100)
+    clients = []
+
+    def build():
+        c = _make_fake_client(entity, [])
+        clients.append(c)
+        return c
+
+    with patch("app.news_parser.telegram_reader._build_client", side_effect=build):
+        TelegramReader().fetch(src)
+        TelegramReader().fetch(src)
+
+    total_resolves = sum(c.get_entity.await_count for c in clients)
+    assert total_resolves == 1
+
+
 def test_telegram_reader_no_new_messages_keeps_last_seen():
     entity = SimpleNamespace(id=555, title="AI Channel")
     fake_client = _make_fake_client(entity, [])
