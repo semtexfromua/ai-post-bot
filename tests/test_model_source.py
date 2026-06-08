@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.models.base import SourceType
 from app.models.source import Source
@@ -18,7 +18,7 @@ def test_create_source_row(db):
     assert src.etag is None
     assert src.modified is None
     assert src.created_at.tzinfo is not None
-    assert src.created_at.utcoffset() == timezone.utc.utcoffset(datetime.now())
+    assert src.created_at.utcoffset() == UTC.utcoffset(datetime.now())
 
 
 def test_source_type_enum_round_trip(db):

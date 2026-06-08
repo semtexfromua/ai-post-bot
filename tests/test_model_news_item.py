@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -13,7 +13,7 @@ def _item(**kw):
         "url": "https://example.com/a",
         "summary": "summary",
         "source": "Example",
-        "published_at": datetime(2026, 6, 8, tzinfo=timezone.utc),
+        "published_at": datetime(2026, 6, 8, tzinfo=UTC),
         "raw_text": "raw",
         "content_hash": "h1",
     }

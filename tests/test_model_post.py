@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.models.base import PostStatus
 from app.models.news_item import NewsItem
@@ -12,7 +12,7 @@ def _news(db):
         url="https://example.com",
         summary=None,
         source="Example",
-        published_at=datetime(2026, 6, 8, tzinfo=timezone.utc),
+        published_at=datetime(2026, 6, 8, tzinfo=UTC),
         raw_text=None,
         content_hash=uuid.uuid4().hex,
     )
