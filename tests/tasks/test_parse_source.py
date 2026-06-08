@@ -126,6 +126,66 @@ def test_parse_source_fetch_failure_logs_error_and_does_not_raise(db_session):
     mock_chain.assert_not_called()
 
 
+def test_parse_source_concurrent_dup_skipped_batch_not_lost(db_session):
+    """A concurrent INSERT collision (fast-path missed) must not drop the whole batch.
+
+    Simulates a race: the fast-path db.scalar sees None for the dup item (concurrent
+    worker hasn't committed yet), but the SAVEPOINT flush hits a UNIQUE constraint.
+    The dup is skipped; the new item is still persisted and the chain is enqueued once.
+    """
+    src = _seed_source(db_session)
+    dup_hash = content_hash("Dup", "https://example.com/dup")
+    # Pre-seed the duplicate so the DB has the constraint violation ready.
+    db_session.add(
+        NewsItem(
+            title="Dup",
+            url="https://example.com/dup",
+            summary="sum",
+            source="Example",
+            published_at=datetime(2026, 6, 8, tzinfo=UTC),
+            raw_text="body",
+            content_hash=dup_hash,
+        )
+    )
+    db_session.commit()
+
+    new_hash = content_hash("New", "https://example.com/new")
+    fake_parser = MagicMock()
+    fake_parser.fetch.return_value = [
+        _news_data("Dup", "https://example.com/dup"),  # will collide
+        _news_data("New", "https://example.com/new"),  # genuinely new
+    ]
+
+    # Patch db.scalar to return None for both items (simulates race: fast-path misses
+    # the pre-existing dup because the concurrent worker hadn't committed yet).
+    def _scalar_race(stmt, **kw):
+        # Always report "not found" so the fast-path never skips anything and every
+        # item reaches the SAVEPOINT INSERT — the dup will then raise IntegrityError.
+        return None
+
+    with (
+        patch.object(pipeline, "SessionLocal", return_value=db_session),
+        patch.object(pipeline, "get_parser", return_value=fake_parser),
+        patch.object(pipeline, "chain") as mock_chain,
+        patch.object(pipeline, "filter_item"),
+        patch.object(pipeline, "generate_post"),
+        patch.object(pipeline, "publish_post"),
+        patch.object(db_session, "scalar", side_effect=_scalar_race),
+    ):
+        pipeline.parse_source(str(src.id))
+
+    # Only the new item was inserted (dup still has exactly one row).
+    dup_rows = db_session.query(NewsItem).filter_by(content_hash=dup_hash).all()
+    assert len(dup_rows) == 1
+
+    new_rows = db_session.query(NewsItem).filter_by(content_hash=new_hash).all()
+    assert len(new_rows) == 1  # new item persisted
+
+    # Chain enqueued exactly once — for the new item, not the dup.
+    assert mock_chain.call_count == 1
+    assert mock_chain.return_value.delay.call_count == 1
+
+
 def test_parse_source_disabled_source_is_noop(db_session):
     """source.enabled == False → no fetch and no chain enqueued."""
     src = Source(

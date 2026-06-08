@@ -14,6 +14,7 @@ from aiogram.exceptions import (
 from celery import chain
 from celery.exceptions import MaxRetriesExceededError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.ai.generator import build_generator
 from app.ai.moderation import is_flagged
@@ -201,8 +202,9 @@ def parse_source(source_id: str) -> None:
 
             for data in items:
                 chash = content_hash(data.title, data.url)
-                exists = (
-                    db.query(NewsItem).filter(NewsItem.content_hash == chash).first()
+                # Fast path: skip obvious duplicates without attempting an INSERT.
+                exists = db.scalar(
+                    select(NewsItem).where(NewsItem.content_hash == chash)
                 )
                 if exists is not None:
                     continue
@@ -215,8 +217,12 @@ def parse_source(source_id: str) -> None:
                     raw_text=data.raw_text,
                     content_hash=chash,
                 )
-                db.add(news)
-                db.flush()
+                try:
+                    with db.begin_nested():  # SAVEPOINT — rolls back only this item
+                        db.add(news)
+                        db.flush()
+                except IntegrityError:
+                    continue  # concurrent duplicate — skip, keep the rest
                 new_ids.append(str(news.id))
 
             # persist conditional-GET validators / last_seen_msg_id mutated by parser

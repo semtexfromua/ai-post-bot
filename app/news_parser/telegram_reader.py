@@ -42,11 +42,13 @@ async def _read(source: Source) -> list[NewsItemData]:
             entity = await client.get_entity(source.url)
             _entity_cache[source.url] = entity
 
-        messages = await client.get_messages(
+        messages: list = []
+        async for msg in client.iter_messages(
             entity,
             min_id=source.last_seen_msg_id or 0,
-            limit=100,
-        )
+            reverse=True,
+        ):
+            messages.append(msg)
 
     items: list[NewsItemData] = []
     max_id = source.last_seen_msg_id or 0

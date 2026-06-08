@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import calendar
+import socket
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -26,18 +27,16 @@ class FeedParser(BaseParser):
     """RSS/Atom parser via feedparser with conditional GET support."""
 
     def fetch(self, source: Source) -> list[NewsItemData]:
-        parsed = feedparser.parse(
-            source.url,
-            etag=source.etag,
-            modified=source.modified,
-        )
-
-        if getattr(parsed, "bozo", 0):
-            logger.warning(
-                "feed.bozo",
-                url=source.url,
-                error=str(getattr(parsed, "bozo_exception", "")),
+        _old_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(20)
+        try:
+            parsed = feedparser.parse(
+                source.url,
+                etag=source.etag,
+                modified=source.modified,
             )
+        finally:
+            socket.setdefaulttimeout(_old_timeout)
 
         if getattr(parsed, "status", None) == 304:
             return []
@@ -49,6 +48,16 @@ class FeedParser(BaseParser):
         new_modified = getattr(parsed, "modified", None)
         if new_modified is not None:
             source.modified = new_modified
+
+        # Only warn about bozo when we actually received entries — an unreachable
+        # host or network error has no entries and should not be mislabelled
+        # "malformed feed".
+        if getattr(parsed, "bozo", 0) and parsed.entries:
+            logger.warning(
+                "feed.bozo",
+                url=source.url,
+                error=str(getattr(parsed, "bozo_exception", "")),
+            )
 
         items: list[NewsItemData] = []
         for entry in parsed.entries:

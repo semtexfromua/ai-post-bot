@@ -34,18 +34,23 @@ def _make_message(msg_id: int, text: str):
     )
 
 
+async def _async_iter(items):
+    for item in items:
+        yield item
+
+
 def _make_fake_client(entity, messages):
     client = MagicMock()
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=False)
     client.get_entity = AsyncMock(return_value=entity)
-    client.get_messages = AsyncMock(return_value=messages)
+    client.iter_messages = MagicMock(return_value=_async_iter(messages))
     return client
 
 
 def test_telegram_reader_incremental_resolve_and_min_id():
     entity = SimpleNamespace(id=555, title="AI Channel")
-    messages = [_make_message(102, "newest"), _make_message(101, "older")]
+    messages = [_make_message(101, "older"), _make_message(102, "newest")]
     fake_client = _make_fake_client(entity, messages)
     src = _make_source(last_seen=100)
 
@@ -56,14 +61,15 @@ def test_telegram_reader_incremental_resolve_and_min_id():
 
     # resolve once
     fake_client.get_entity.assert_awaited_once_with("@ai_channel")
-    # incremental min_id read off the resolved entity
-    _, kwargs = fake_client.get_messages.call_args
+    # iter_messages called with min_id and reverse=True
+    _, kwargs = fake_client.iter_messages.call_args
     assert kwargs["min_id"] == 100
+    assert kwargs["reverse"] is True
     # entity may be passed positionally or as a keyword argument
     entity_kwarg = kwargs.get("entity")
     entity_posarg = (
-        fake_client.get_messages.call_args.args[0]
-        if fake_client.get_messages.call_args.args
+        fake_client.iter_messages.call_args.args[0]
+        if fake_client.iter_messages.call_args.args
         else None
     )
     assert entity_kwarg == entity or entity_posarg == entity
