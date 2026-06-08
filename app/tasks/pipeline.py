@@ -5,6 +5,8 @@ import uuid
 
 import openai
 import redis as redis_lib
+import structlog
+import structlog.contextvars
 from aiogram.exceptions import (
     TelegramBadRequest,
     TelegramForbiddenError,
@@ -32,6 +34,8 @@ from app.tasks.celery_app import celery_app
 from app.tasks.state import mark_failed, mark_generated, mark_published
 from app.telegram import publisher
 
+logger = structlog.get_logger(__name__)
+
 LOCK_KEY = "m4:lock:collect"
 LOCK_TTL_SECONDS = 25 * 60  # < beat interval (30m), > a full cycle
 
@@ -45,8 +49,14 @@ _OPENAI_TRANSIENT = (
 )
 
 
+_redis_client: redis_lib.Redis | None = None
+
+
 def get_redis() -> redis_lib.Redis:
-    return redis_lib.Redis.from_url(settings.REDIS_URL)
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis_lib.Redis.from_url(settings.REDIS_URL)
+    return _redis_client
 
 
 def _load_keywords(session) -> list[Keyword]:
@@ -66,6 +76,7 @@ def generate_post(self, news_id: str | None) -> str | None:
     if news_id is None:
         return None
 
+    structlog.contextvars.bind_contextvars(news_id=news_id)
     with SessionLocal() as session:
         item = session.get(NewsItem, uuid.UUID(news_id))
         if item is None:
@@ -90,6 +101,9 @@ def generate_post(self, news_id: str | None) -> str | None:
                     news_id=item.id,
                 )
                 session.commit()
+                logger.warning(
+                    "generate.failed", news_id=news_id, reason="retries_exhausted"
+                )
                 return str(post.id)
         except Exception as exc:  # non-transient generation failure (e.g. refusal)
             post = Post(news_id=item.id, generated_text="", status=PostStatus.new)
@@ -104,6 +118,7 @@ def generate_post(self, news_id: str | None) -> str | None:
                 news_id=item.id,
             )
             session.commit()
+            logger.warning("generate.failed", news_id=news_id, reason=str(exc))
             return str(post.id)
 
         # 2) Generation succeeded -> create the Post and run moderation/length guards.
@@ -117,6 +132,7 @@ def generate_post(self, news_id: str | None) -> str | None:
             if not text or len(text) > settings.POST_MAX_LEN:
                 raise ValueError("generated text empty or exceeds POST_MAX_LEN")
             mark_generated(session, post, text)
+            logger.info("generate.ok", post_id=str(post.id), len=len(text))
         except Exception as exc:  # noqa: BLE001 — log every failure, never raise out
             mark_failed(
                 session,
@@ -126,6 +142,7 @@ def generate_post(self, news_id: str | None) -> str | None:
                 tb=traceback.format_exc(),
                 news_id=item.id,
             )
+            logger.warning("generate.failed", news_id=news_id, reason=str(exc))
         session.commit()
         return str(post.id)
 
@@ -133,12 +150,17 @@ def generate_post(self, news_id: str | None) -> str | None:
 @celery_app.task(name="app.tasks.pipeline.filter_item")
 def filter_item(news_id: str) -> str | None:
     """Run filter gate. Returns news_id to continue the chain, or None to stop."""
+    structlog.contextvars.bind_contextvars(news_id=news_id)
     with SessionLocal() as session:
         item = session.get(NewsItem, uuid.UUID(news_id))
         if item is None:
             return None
         keywords = _load_keywords(session)
         ok = passes_filters(item, keywords, get_redis(), settings)
+        if ok:
+            logger.info("filter.passed", news_id=news_id)
+        else:
+            logger.info("filter.dropped", news_id=news_id)
         return news_id if ok else None
 
 
@@ -156,6 +178,7 @@ def publish_post(self, post_id: str | None) -> None:
     """
     if post_id is None:
         return
+    structlog.contextvars.bind_contextvars(post_id=post_id)
     with SessionLocal() as db:
         post = db.get(Post, uuid.UUID(post_id))
         if post is None or post.status != PostStatus.generated:
@@ -179,9 +202,11 @@ def publish_post(self, post_id: str | None) -> None:
                 tb=traceback.format_exc(),
             )
             db.commit()
+            logger.warning("publish.failed", post_id=post_id, error=str(exc))
             return
         mark_published(db, post, message_id)
         db.commit()
+        logger.info("publish.ok", post_id=post_id, message_id=message_id)
 
 
 @celery_app.task(name="app.tasks.pipeline.parse_source")
@@ -227,6 +252,12 @@ def parse_source(source_id: str) -> None:
 
             # persist conditional-GET validators / last_seen_msg_id mutated by parser
             db.commit()
+            logger.info(
+                "parse_source.done",
+                source_id=source_id,
+                fetched=len(items),
+                new=len(new_ids),
+            )
         except Exception as exc:  # noqa: BLE001 — one bad source must not crash the batch
             db.rollback()
             mark_failed(
@@ -238,6 +269,7 @@ def parse_source(source_id: str) -> None:
                 tb=traceback.format_exc(),
             )
             db.commit()
+            logger.warning("parse_source.failed", source_id=source_id, error=str(exc))
             return
 
     for news_id in new_ids:
