@@ -33,7 +33,13 @@ celery_app.conf.update(
     beat_schedule={
         "collect": {
             "task": "app.tasks.pipeline.collect_sources",
-            "schedule": crontab(minute="*/30"),
+            "schedule": crontab(minute="0,30"),
+        },
+        # Drip one post every 30 min, offset from collect so freshly generated
+        # posts are ready before we publish.
+        "publish": {
+            "task": "app.tasks.pipeline.publish_next",
+            "schedule": crontab(minute="15,45"),
         },
     },
 )

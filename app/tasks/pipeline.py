@@ -315,8 +315,32 @@ def parse_source(source_id: str) -> None:
             logger.warning("parse_source.failed", source_id=source_id, error=str(exc))
             return
 
+    # Filter + generate each new item into a pool of ready (status=generated) posts.
+    # Publishing is decoupled: publish_next drips one post per scheduled tick so the
+    # channel gets ~1 post per interval instead of a burst.
     for news_id in new_ids:
-        chain(filter_item.s(news_id) | generate_post.s() | publish_post.s()).delay()
+        chain(filter_item.s(news_id) | generate_post.s()).delay()
+
+
+@celery_app.task(name="app.tasks.pipeline.publish_next")
+def publish_next() -> None:
+    """Drip publisher: enqueue exactly one ready post per tick (newest generated,
+    not yet published). Keeps the channel to ~1 post per scheduled interval instead
+    of publishing the whole batch at once.
+    """
+    with SessionLocal() as db:
+        post = db.scalars(
+            select(Post)
+            .where(Post.status == PostStatus.generated)
+            .order_by(Post.created_at.desc())
+            .limit(1)
+        ).first()
+        post_id = str(post.id) if post is not None else None
+    if post_id is None:
+        logger.info("publish_next.idle")
+        return
+    publish_post.delay(post_id)
+    logger.info("publish_next.queued", post_id=post_id)
 
 
 @celery_app.task(name="app.tasks.pipeline.collect_sources")
