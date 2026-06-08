@@ -38,9 +38,7 @@ def test_create_post_row_defaults_status_new(db):
 
 def test_post_status_enum_round_trip(db):
     news = _news(db)
-    post = Post(
-        news_id=news.id, generated_text="x", status=PostStatus.published
-    )
+    post = Post(news_id=news.id, generated_text="x", status=PostStatus.published)
     db.add(post)
     db.commit()
     fetched = db.get(Post, post.id)

@@ -38,8 +38,10 @@ def test_prod_raises_on_empty_secrets(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "prod")
 
     import pytest
+
     with pytest.raises(ValueError):
         import importlib as _il
+
         _il.reload(config_module)
         config_module.Settings()
 

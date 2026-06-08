@@ -39,6 +39,4 @@ def test_error_log_created_at_is_utc(db):
     db.add(log)
     db.commit()
     db.refresh(log)
-    assert log.created_at.utcoffset() == UTC.utcoffset(
-        datetime.now()
-    )
+    assert log.created_at.utcoffset() == UTC.utcoffset(datetime.now())

@@ -7,7 +7,9 @@ from app.core.config import settings
 from app.models import Base  # noqa: F401  triggers model registration
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Only override if the caller hasn't set a URL (e.g. tests set it via set_main_option)
+if not config.get_main_option("sqlalchemy.url"):
+    config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

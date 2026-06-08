@@ -31,17 +31,21 @@ class Settings(BaseSettings):
     def _require_secrets_in_prod(self) -> "Settings":
         if self.ENVIRONMENT == "prod":
             empty = [
-                name for name, val in [
+                name
+                for name, val in [
                     ("OPENAI_API_KEY", self.OPENAI_API_KEY),
                     ("TELEGRAM_API_HASH", self.TELEGRAM_API_HASH),
                     ("TELETHON_STRING_SESSION", self.TELETHON_STRING_SESSION),
                     ("TELEGRAM_BOT_TOKEN", self.TELEGRAM_BOT_TOKEN),
-                ] if not val.get_secret_value()
+                ]
+                if not val.get_secret_value()
             ] + [
-                name for name, val in [
+                name
+                for name, val in [
                     ("TELEGRAM_API_ID", self.TELEGRAM_API_ID),
                     ("TELEGRAM_CHANNEL_ID", self.TELEGRAM_CHANNEL_ID),
-                ] if val == 0
+                ]
+                if val == 0
             ]
             if empty:
                 raise ValueError(f"Required in prod but missing/empty: {empty}")
