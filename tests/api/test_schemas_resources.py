@@ -1,13 +1,10 @@
 import uuid
-from datetime import datetime, timezone
-
-import pytest
-from pydantic import ValidationError
+from datetime import UTC, datetime
 
 from app.models.base import ErrorStage, PostStatus, SourceType
 from app.schemas.error_log import ErrorLogRead
 from app.schemas.generate import GenerateRequest, GenerateResponse
-from app.schemas.keyword import KeywordCreate, KeywordRead, KeywordUpdate
+from app.schemas.keyword import KeywordCreate, KeywordRead
 from app.schemas.post import PostRead
 from app.schemas.source import SourceCreate, SourceRead, SourceUpdate
 
@@ -86,7 +83,7 @@ def test_post_read_from_orm_like_object():
         published_at = None
         tg_message_id = None
         error = None
-        created_at = datetime.now(timezone.utc)
+        created_at = datetime.now(UTC)
 
     read = PostRead.model_validate(_P())
     assert read.status == PostStatus.generated
@@ -95,7 +92,7 @@ def test_post_read_from_orm_like_object():
 def test_error_stage_enum_roundtrips():
     class _E:
         id = uuid.uuid4()
-        created_at = datetime.now(timezone.utc)
+        created_at = datetime.now(UTC)
         stage = ErrorStage.publish
         source_id = None
         news_id = None

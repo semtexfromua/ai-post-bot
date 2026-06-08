@@ -5,7 +5,6 @@ from fastapi import HTTPException
 
 from app.api.v1.deps import Pagination, get_post_or_404, get_source_or_404
 from app.models.base import SourceType
-from app.models.post import Post
 from app.models.source import Source
 
 

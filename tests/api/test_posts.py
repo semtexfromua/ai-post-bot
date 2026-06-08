@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.models.base import PostStatus
 from app.models.news_item import NewsItem
@@ -12,7 +12,7 @@ def _seed_news(db):
         url="https://n",
         summary="s",
         source="src",
-        published_at=datetime.now(timezone.utc),
+        published_at=datetime.now(UTC),
         raw_text="r",
         content_hash=uuid.uuid4().hex,
     )

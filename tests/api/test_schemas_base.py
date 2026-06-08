@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.schemas.base import APIModel
 from app.schemas.common import Page
@@ -11,14 +11,14 @@ class _Sample(APIModel):
 
 class _Obj:
     name = "abc"
-    when = datetime(2026, 6, 8, tzinfo=timezone.utc)
+    when = datetime(2026, 6, 8, tzinfo=UTC)
 
 
 def test_apimodel_reads_from_attributes():
     obj = _Obj()
     out = _Sample.model_validate(obj)
     assert out.name == "abc"
-    assert out.when == datetime(2026, 6, 8, tzinfo=timezone.utc)
+    assert out.when == datetime(2026, 6, 8, tzinfo=UTC)
 
 
 def test_page_generic_envelope():
