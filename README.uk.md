@@ -61,7 +61,7 @@ flowchart TD
     Drip -->|"джерело, що найдовше<br/>не публікувалось"| Pub["publish_post<br/>tg queue · aiogram"]
     Pub -->|"send_message → tg_message_id"| Channel[("Telegram-канал")]
 
-    classDef infra fill:#eef,stroke:#88a;
+    classDef infra fill:#c7d2fe,stroke:#4f46e5,color:#1e1b4b,stroke-width:2px;
 ```
 
 ### Процеси (Docker Compose)
