@@ -268,6 +268,16 @@ curl -X DELETE http://localhost:8000/api/v1/keywords/{id}  # 204
 </details>
 
 <details>
+<summary><b>News</b> — collected items (<code>GET /api/v1/news</code>)</summary>
+
+```bash
+curl "http://localhost:8000/api/v1/news?limit=10&offset=0"   # all, newest published first
+curl "http://localhost:8000/api/v1/news?source=Habr"         # filter by exact source name
+# item: {id, title, url, summary, source, published_at, raw_text, created_at}
+```
+</details>
+
+<details>
 <summary><b>Posts</b> — post history (<code>GET /api/v1/posts</code>)</summary>
 
 ```bash
