@@ -12,12 +12,24 @@ def _searchable_text(item: NewsItem) -> str:
 
 
 def passes_filters(
-    item: NewsItem, keywords: list[Keyword], redis_client, settings
+    item: NewsItem,
+    keywords: list[Keyword],
+    redis_client,
+    settings,
+    *,
+    source_enabled: bool = True,
 ) -> bool:
-    """Filter gate. Order: dedup -> language (soft) -> keywords.
+    """Filter gate. Order: source -> dedup -> language (soft) -> keywords.
 
     Returns True if the item should continue down the pipeline.
+    `source_enabled` is False when the item's originating Source is currently
+    disabled (the caller resolves it); checked first so a disabled source is
+    dropped without consuming a dedup slot.
     """
+    # 0) source: drop items whose originating source is currently disabled.
+    if not source_enabled:
+        return False
+
     # 1) dedup (records the hash atomically; True means already seen)
     if is_duplicate(item.content_hash, redis_client):
         return False

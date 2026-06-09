@@ -2,9 +2,10 @@ import uuid
 from datetime import UTC, datetime
 from unittest.mock import patch
 
-from app.models.base import PostStatus
+from app.models.base import PostStatus, SourceType
 from app.models.news_item import NewsItem
 from app.models.post import Post
+from app.models.source import Source
 from app.tasks import pipeline
 
 
@@ -33,6 +34,16 @@ def _news(db, source="src") -> NewsItem:
     db.commit()
     db.refresh(n)
     return n
+
+
+def _source(db, *, name, enabled) -> Source:
+    s = Source(
+        type=SourceType.site, name=name, url=f"https://src/{name}", enabled=enabled
+    )
+    db.add(s)
+    db.commit()
+    db.refresh(s)
+    return s
 
 
 def test_publish_next_enqueues_only_newest_generated(db, monkeypatch):
@@ -111,3 +122,34 @@ def test_publish_next_idle_when_no_generated(db, monkeypatch):
         pipeline.publish_next.run()
 
     delay.assert_not_called()
+
+
+def test_publish_next_skips_post_from_disabled_source(db, monkeypatch):
+    # source disabled AFTER the post was generated -> must NOT publish (kill switch)
+    n = _news(db, source="Off")
+    _source(db, name="Off", enabled=False)
+    db.add(Post(news_id=n.id, generated_text="x", status=PostStatus.generated))
+    db.commit()
+    monkeypatch.setattr(pipeline, "SessionLocal", lambda: db_ctx(db))
+
+    with patch.object(pipeline.publish_post, "delay") as delay:
+        pipeline.publish_next.run()
+
+    delay.assert_not_called()
+
+
+def test_publish_next_picks_enabled_over_disabled_source(db, monkeypatch):
+    n_off = _news(db, source="Off")
+    n_on = _news(db, source="On")
+    _source(db, name="Off", enabled=False)
+    _source(db, name="On", enabled=True)
+    p_off = Post(news_id=n_off.id, generated_text="off", status=PostStatus.generated)
+    p_on = Post(news_id=n_on.id, generated_text="on", status=PostStatus.generated)
+    db.add_all([p_off, p_on])
+    db.commit()
+    monkeypatch.setattr(pipeline, "SessionLocal", lambda: db_ctx(db))
+
+    with patch.object(pipeline.publish_post, "delay") as delay:
+        pipeline.publish_next.run()
+
+    delay.assert_called_once_with(str(p_on.id))

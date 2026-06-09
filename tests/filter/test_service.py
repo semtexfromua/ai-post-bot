@@ -50,3 +50,13 @@ def test_dropped_on_confident_disallowed_language():
         "Das ist eine lange deutsche Nachricht über die Regierung heute Abend."
     )
     assert passes_filters(item, [], r, settings) is False
+
+
+def test_dropped_when_source_disabled():
+    # source filter gates before keywords: a keyword match must not save a disabled source
+    r = fakeredis.FakeStrictRedis()
+    item = _news("Сьогодні відбулося багато виборів у країні")
+    assert (
+        passes_filters(item, [_kw("вибори")], r, settings, source_enabled=False)
+        is False
+    )

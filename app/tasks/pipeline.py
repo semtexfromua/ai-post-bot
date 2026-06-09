@@ -14,7 +14,7 @@ from aiogram.exceptions import (
     TelegramServerError,
 )
 from celery import chain
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.ai.formatting import format_post
@@ -64,6 +64,18 @@ def get_redis() -> redis_lib.Redis:
 
 def _load_keywords(session) -> list[Keyword]:
     return list(session.execute(select(Keyword)).scalars().all())
+
+
+def _source_enabled(session, source_name: str) -> bool:
+    """Source filter (spec §4): an item is allowed unless its originating Source
+    is currently disabled. NewsItem.source holds the Source.name (set by parsers).
+    name is not unique, so drop only when matching rows exist AND all are disabled;
+    an unmatched source (e.g. synthetic "manual" items) is always allowed.
+    """
+    matching = session.scalars(
+        select(Source.enabled).where(Source.name == source_name)
+    ).all()
+    return (not matching) or any(matching)
 
 
 @celery_app.task(bind=True, name="app.tasks.pipeline.generate_post", max_retries=5)
@@ -191,7 +203,10 @@ def filter_item(news_id: str) -> str | None:
         if item is None:
             return None
         keywords = _load_keywords(session)
-        ok = passes_filters(item, keywords, get_redis(), settings)
+        source_enabled = _source_enabled(session, item.source)
+        ok = passes_filters(
+            item, keywords, get_redis(), settings, source_enabled=source_enabled
+        )
         if ok:
             logger.info("filter.passed", news_id=news_id)
         else:
@@ -361,11 +376,23 @@ def publish_next() -> None:
             .group_by(NewsItem.source)
             .subquery()
         )
+        # Source gate, symmetric with filter_item/_source_enabled: never publish a
+        # post whose source is currently disabled. An unmatched source (e.g. a
+        # synthetic "manual" item with no Source row) stays allowed.
+        src_enabled = (
+            select(Source.id)
+            .where(Source.name == NewsItem.source, Source.enabled.is_(True))
+            .exists()
+        )
+        src_known = select(Source.id).where(Source.name == NewsItem.source).exists()
         post = db.scalars(
             select(Post)
             .join(NewsItem, NewsItem.id == Post.news_id)
             .outerjoin(last_published, last_published.c.source == NewsItem.source)
-            .where(Post.status == PostStatus.generated)
+            .where(
+                Post.status == PostStatus.generated,
+                or_(src_enabled, ~src_known),
+            )
             .order_by(
                 last_published.c.last_at.asc().nulls_first(),
                 Post.created_at.desc(),
