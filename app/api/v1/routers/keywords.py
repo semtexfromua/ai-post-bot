@@ -12,7 +12,7 @@ from app.schemas.keyword import KeywordCreate, KeywordRead, KeywordUpdate
 router = APIRouter(prefix="/keywords", tags=["keywords"])
 
 
-@router.get("", response_model=Page[KeywordRead])
+@router.get("", response_model=Page[KeywordRead], summary="Список ключових слів")
 def list_keywords(db: SessionDep, pagination: PaginationDep) -> Page[KeywordRead]:
     total = db.scalar(select(func.count()).select_from(Keyword))
     rows = db.scalars(
@@ -24,7 +24,12 @@ def list_keywords(db: SessionDep, pagination: PaginationDep) -> Page[KeywordRead
     return Page[KeywordRead](data=rows, count=total or 0)
 
 
-@router.post("", response_model=KeywordRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=KeywordRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Додати ключове слово",
+)
 def create_keyword(payload: KeywordCreate, db: SessionDep) -> Keyword:
     keyword = Keyword(**payload.model_dump())
     db.add(keyword)
@@ -38,12 +43,20 @@ def create_keyword(payload: KeywordCreate, db: SessionDep) -> Keyword:
     return keyword
 
 
-@router.get("/{keyword_id}", response_model=KeywordRead)
+@router.get(
+    "/{keyword_id}",
+    response_model=KeywordRead,
+    summary="Отримати ключове слово за id",
+)
 def get_keyword(keyword_id: uuid.UUID, db: SessionDep) -> Keyword:
     return get_keyword_or_404(keyword_id, db)
 
 
-@router.patch("/{keyword_id}", response_model=KeywordRead)
+@router.patch(
+    "/{keyword_id}",
+    response_model=KeywordRead,
+    summary="Частково оновити ключове слово",
+)
 def update_keyword(
     keyword_id: uuid.UUID, payload: KeywordUpdate, db: SessionDep
 ) -> Keyword:
@@ -54,7 +67,11 @@ def update_keyword(
     return keyword
 
 
-@router.delete("/{keyword_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{keyword_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Видалити ключове слово",
+)
 def delete_keyword(keyword_id: uuid.UUID, db: SessionDep) -> None:
     keyword = get_keyword_or_404(keyword_id, db)
     db.delete(keyword)

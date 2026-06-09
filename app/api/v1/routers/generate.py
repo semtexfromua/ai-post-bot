@@ -11,7 +11,15 @@ from app.tasks.pipeline import generate_post
 router = APIRouter(prefix="/generate", tags=["generate"])
 
 
-@router.post("", response_model=GenerateResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "",
+    response_model=GenerateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Ручний запуск генерації",
+    description="Ставить таску генерації у чергу (202). Приймає `news_id` наявного "
+    "NewsItem або довільний `text` (створює синтетичний NewsItem, source=\"manual\"). "
+    "Лише генерація, без авто-публікації.",
+)
 def enqueue_generate(payload: GenerateRequest, db: SessionDep) -> GenerateResponse:
     if payload.news_id is not None:
         news = db.get(NewsItem, payload.news_id)

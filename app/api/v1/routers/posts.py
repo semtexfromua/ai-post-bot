@@ -10,7 +10,13 @@ from app.schemas.post import PostRead
 router = APIRouter(prefix="/posts", tags=["posts"])
 
 
-@router.get("", response_model=Page[PostRead])
+@router.get(
+    "",
+    response_model=Page[PostRead],
+    summary="Історія постів",
+    description="Список згенерованих постів (найновіші перші). "
+    "Опційний фільтр `status`: new | generated | published | failed.",
+)
 def list_posts(
     db: SessionDep,
     pagination: PaginationDep,

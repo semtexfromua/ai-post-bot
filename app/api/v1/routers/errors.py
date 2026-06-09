@@ -10,7 +10,13 @@ from app.schemas.error_log import ErrorLogRead
 router = APIRouter(prefix="/errors", tags=["errors"])
 
 
-@router.get("", response_model=Page[ErrorLogRead])
+@router.get(
+    "",
+    response_model=Page[ErrorLogRead],
+    summary="Журнал помилок",
+    description="Залоговані фейли пайплайну (найновіші перші). "
+    "Опційний фільтр `stage`: parse | generate | publish.",
+)
 def list_errors(
     db: SessionDep,
     pagination: PaginationDep,

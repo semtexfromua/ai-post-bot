@@ -12,7 +12,7 @@ from app.schemas.source import SourceCreate, SourceRead, SourceUpdate
 router = APIRouter(prefix="/sources", tags=["sources"])
 
 
-@router.get("", response_model=Page[SourceRead])
+@router.get("", response_model=Page[SourceRead], summary="Список джерел")
 def list_sources(db: SessionDep, pagination: PaginationDep) -> Page[SourceRead]:
     total = db.scalar(select(func.count()).select_from(Source))
     rows = db.scalars(
@@ -24,7 +24,12 @@ def list_sources(db: SessionDep, pagination: PaginationDep) -> Page[SourceRead]:
     return Page[SourceRead](data=rows, count=total or 0)
 
 
-@router.post("", response_model=SourceRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=SourceRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Створити джерело (site/rss або tg)",
+)
 def create_source(payload: SourceCreate, db: SessionDep) -> Source:
     source = Source(**payload.model_dump())
     db.add(source)
@@ -38,12 +43,16 @@ def create_source(payload: SourceCreate, db: SessionDep) -> Source:
     return source
 
 
-@router.get("/{source_id}", response_model=SourceRead)
+@router.get("/{source_id}", response_model=SourceRead, summary="Отримати джерело за id")
 def get_source(source_id: uuid.UUID, db: SessionDep) -> Source:
     return get_source_or_404(source_id, db)
 
 
-@router.patch("/{source_id}", response_model=SourceRead)
+@router.patch(
+    "/{source_id}",
+    response_model=SourceRead,
+    summary="Частково оновити джерело",
+)
 def update_source(
     source_id: uuid.UUID, payload: SourceUpdate, db: SessionDep
 ) -> Source:
@@ -54,7 +63,11 @@ def update_source(
     return source
 
 
-@router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{source_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Видалити джерело",
+)
 def delete_source(source_id: uuid.UUID, db: SessionDep) -> None:
     source = get_source_or_404(source_id, db)
     db.delete(source)
