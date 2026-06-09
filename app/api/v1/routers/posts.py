@@ -23,7 +23,8 @@ def list_posts(
     status: PostStatus | None = None,
 ) -> Page[PostRead]:
     count_stmt = select(func.count()).select_from(Post)
-    rows_stmt = select(Post).order_by(Post.created_at.desc())
+    # id tiebreaker -> stable pagination when created_at ties
+    rows_stmt = select(Post).order_by(Post.created_at.desc(), Post.id)
     if status is not None:
         count_stmt = count_stmt.where(Post.status == status)
         rows_stmt = rows_stmt.where(Post.status == status)

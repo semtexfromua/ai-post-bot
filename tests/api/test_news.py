@@ -65,3 +65,28 @@ def test_list_news_pagination_limit_offset(client, db_session):
 def test_list_news_limit_over_cap_422(client):
     resp = client.get("/api/v1/news", params={"limit": 1000})
     assert resp.status_code == 422
+
+
+def test_list_news_stable_order_on_tied_published_at(client, db_session):
+    # Same published_at on every row (typical for one RSS batch). Insert in REVERSE
+    # of id-ascending order so only an explicit id tiebreaker yields a deterministic
+    # order; without it the rows come back in insertion order.
+    same = datetime.now(UTC)
+    ids = sorted(uuid.uuid4() for _ in range(3))  # ascending
+    for nid in reversed(ids):
+        db_session.add(
+            NewsItem(
+                id=nid,
+                title="T",
+                url="https://n",
+                summary="s",
+                source="src",
+                published_at=same,
+                raw_text="r",
+                content_hash=uuid.uuid4().hex,
+            )
+        )
+    db_session.commit()
+
+    data = client.get("/api/v1/news", params={"limit": 100}).json()["data"]
+    assert [item["id"] for item in data] == [str(i) for i in ids]

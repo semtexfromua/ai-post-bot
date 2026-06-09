@@ -22,7 +22,8 @@ def list_news(
     source: str | None = None,
 ) -> Page[NewsRead]:
     count_stmt = select(func.count()).select_from(NewsItem)
-    rows_stmt = select(NewsItem).order_by(NewsItem.published_at.desc())
+    # id tiebreaker -> deterministic order across pages when published_at ties
+    rows_stmt = select(NewsItem).order_by(NewsItem.published_at.desc(), NewsItem.id)
     if source is not None:
         count_stmt = count_stmt.where(NewsItem.source == source)
         rows_stmt = rows_stmt.where(NewsItem.source == source)

@@ -60,3 +60,10 @@ def test_content_hash_unique_rejects_duplicate(db):
     with pytest.raises(IntegrityError):
         db.commit()
     db.rollback()
+
+
+def test_news_item_has_search_indexes():
+    # ORDER BY published_at (unfiltered list) and WHERE source + ORDER BY (filtered)
+    names = {ix.name for ix in NewsItem.__table__.indexes}
+    assert "ix_news_items_published_at" in names
+    assert "ix_news_items_source_published_at" in names

@@ -23,7 +23,8 @@ def list_errors(
     stage: ErrorStage | None = None,
 ) -> Page[ErrorLogRead]:
     count_stmt = select(func.count()).select_from(ErrorLog)
-    rows_stmt = select(ErrorLog).order_by(ErrorLog.created_at.desc())
+    # id tiebreaker -> stable pagination when created_at ties
+    rows_stmt = select(ErrorLog).order_by(ErrorLog.created_at.desc(), ErrorLog.id)
     if stage is not None:
         count_stmt = count_stmt.where(ErrorLog.stage == stage)
         rows_stmt = rows_stmt.where(ErrorLog.stage == stage)

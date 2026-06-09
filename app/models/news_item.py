@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Uuid
+from sqlalchemy import Index, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TZDateTime
@@ -13,6 +13,13 @@ if TYPE_CHECKING:
 
 class NewsItem(Base):
     __tablename__ = "news_items"
+    __table_args__ = (
+        # unfiltered /news: ORDER BY published_at DESC
+        Index("ix_news_items_published_at", "published_at"),
+        # ?source= filter: WHERE source + ORDER BY published_at (also serves the
+        # source grouping in publish_next)
+        Index("ix_news_items_source_published_at", "source", "published_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     title: Mapped[str]
