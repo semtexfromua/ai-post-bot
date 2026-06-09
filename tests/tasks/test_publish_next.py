@@ -19,12 +19,12 @@ class db_ctx:
         return False
 
 
-def _news(db) -> NewsItem:
+def _news(db, source="src") -> NewsItem:
     n = NewsItem(
         title="t",
         url="https://e/x",
         summary="s",
-        source="src",
+        source=source,
         published_at=datetime.now(UTC),
         raw_text="r",
         content_hash=uuid.uuid4().hex,
@@ -57,6 +57,42 @@ def test_publish_next_enqueues_only_newest_generated(db, monkeypatch):
         pipeline.publish_next.run()
 
     delay.assert_called_once_with(str(newer.id))  # exactly one, the newest
+
+
+def test_publish_next_rotates_to_least_recently_published_source(db, monkeypatch):
+    # Source A was just published; source B has never been published.
+    na = _news(db, source="A")
+    nb = _news(db, source="B")
+    db.add(
+        Post(
+            news_id=na.id,
+            generated_text="pubA",
+            status=PostStatus.published,
+            published_at=datetime(2026, 6, 9, tzinfo=UTC),
+        )
+    )
+    # A's ready post is NEWER than B's — pure recency would pick A.
+    gen_a = Post(
+        news_id=na.id,
+        generated_text="genA",
+        status=PostStatus.generated,
+        created_at=datetime(2026, 6, 9, 12, tzinfo=UTC),
+    )
+    gen_b = Post(
+        news_id=nb.id,
+        generated_text="genB",
+        status=PostStatus.generated,
+        created_at=datetime(2026, 6, 9, 1, tzinfo=UTC),
+    )
+    db.add_all([gen_a, gen_b])
+    db.commit()
+    monkeypatch.setattr(pipeline, "SessionLocal", lambda: db_ctx(db))
+
+    with patch.object(pipeline.publish_post, "delay") as delay:
+        pipeline.publish_next.run()
+
+    # B's source is idle longest (never published) → wins despite A's newer item.
+    delay.assert_called_once_with(str(gen_b.id))
 
 
 def test_publish_next_idle_when_no_generated(db, monkeypatch):

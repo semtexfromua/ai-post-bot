@@ -14,7 +14,7 @@ from aiogram.exceptions import (
     TelegramServerError,
 )
 from celery import chain
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.ai.formatting import format_post
@@ -324,15 +324,31 @@ def parse_source(source_id: str) -> None:
 
 @celery_app.task(name="app.tasks.pipeline.publish_next")
 def publish_next() -> None:
-    """Drip publisher: enqueue exactly one ready post per tick (newest generated,
-    not yet published). Keeps the channel to ~1 post per scheduled interval instead
-    of publishing the whole batch at once.
+    """Drip publisher: enqueue exactly one ready post per tick. Picks from the
+    source that has gone longest without being published (never-published sources
+    first), then the newest ready item within that source. This rotates the channel
+    across sources instead of letting the highest-volume feed dominate.
     """
     with SessionLocal() as db:
+        last_published = (
+            select(
+                NewsItem.source.label("source"),
+                func.max(Post.published_at).label("last_at"),
+            )
+            .join(Post, Post.news_id == NewsItem.id)
+            .where(Post.status == PostStatus.published)
+            .group_by(NewsItem.source)
+            .subquery()
+        )
         post = db.scalars(
             select(Post)
+            .join(NewsItem, NewsItem.id == Post.news_id)
+            .outerjoin(last_published, last_published.c.source == NewsItem.source)
             .where(Post.status == PostStatus.generated)
-            .order_by(Post.created_at.desc())
+            .order_by(
+                last_published.c.last_at.asc().nulls_first(),
+                Post.created_at.desc(),
+            )
             .limit(1)
         ).first()
         post_id = str(post.id) if post is not None else None
