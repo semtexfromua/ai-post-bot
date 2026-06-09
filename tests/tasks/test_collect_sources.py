@@ -45,6 +45,26 @@ def test_collect_sources_locks_and_routes_per_type(mixed_sources, db):
         assert queue == expected  # tg sources -> single-client tg queue
 
 
+def test_collect_sources_releases_lock_after_run(mixed_sources, db):
+    fake = fakeredis.FakeStrictRedis()
+    with (
+        _patch_session(db),
+        patch.object(pipeline, "get_redis", return_value=fake),
+        patch.object(pipeline.parse_source, "apply_async"),
+    ):
+        pipeline.collect_sources.run()
+    assert fake.get("m4:lock:collect") is None  # released, not held for the TTL
+
+    # a second cycle is not blocked by a stale lock
+    with (
+        _patch_session(db),
+        patch.object(pipeline, "get_redis", return_value=fake),
+        patch.object(pipeline.parse_source, "apply_async") as enq2,
+    ):
+        pipeline.collect_sources.run()
+    assert enq2.call_count == 2
+
+
 def test_collect_sources_noop_when_lock_held(mixed_sources, db):
     fake = fakeredis.FakeStrictRedis()
     fake.set("m4:lock:collect", "1", nx=True, ex=300)  # pre-acquire

@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from unittest.mock import patch
 
+import fakeredis
 import openai
 import pytest
 from celery.exceptions import Retry
@@ -23,6 +24,15 @@ class db_ctx:
 
     def __exit__(self, *exc):
         return False
+
+
+@pytest.fixture(autouse=True)
+def _fake_redis(monkeypatch):
+    """generate_post now takes a per-news_id Redis lock; back it with fakeredis so
+    these unit tests stay network-clean. One shared instance per test."""
+    fake = fakeredis.FakeStrictRedis()
+    monkeypatch.setattr(pipeline, "get_redis", lambda: fake)
+    return fake
 
 
 def _persist_news(db) -> NewsItem:
@@ -110,6 +120,24 @@ def test_generate_post_idempotent_on_redelivery(db, monkeypatch):
 
     assert second_id == first_id
     assert db.query(Post).filter_by(news_id=uuid.UUID(str(item.id))).count() == 1
+
+
+def test_generate_post_skips_when_lock_held(db, monkeypatch, _fake_redis):
+    """A concurrent worker holding the per-news_id lock -> this task no-ops and
+    creates no Post (closes the double-submit duplicate-Post window)."""
+    item = _persist_news(db)
+    monkeypatch.setattr(pipeline, "SessionLocal", lambda: db_ctx(db))
+    monkeypatch.setattr(
+        pipeline,
+        "build_generator",
+        lambda: _Gen(PostDraft(text="should not run", language="uk")),
+    )
+    _fake_redis.set(f"m4:lock:gen:{item.id}", "1", nx=True, ex=300)  # held elsewhere
+
+    result = pipeline.generate_post.run(str(item.id))
+
+    assert result is None
+    assert db.query(Post).count() == 0
 
 
 def test_generate_post_none_input_skips(db, monkeypatch):

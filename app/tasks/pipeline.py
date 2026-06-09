@@ -37,7 +37,10 @@ from app.telegram import publisher
 logger = structlog.get_logger(__name__)
 
 LOCK_KEY = "m4:lock:collect"
-LOCK_TTL_SECONDS = 25 * 60  # < beat interval (30m), > a full cycle
+# Crash-safety net only: collect_sources releases the lock explicitly in a finally
+# block right after enqueuing. The TTL just frees the lock if the worker dies mid-run
+# so a stuck key can't suppress every future cycle.
+LOCK_TTL_SECONDS = 10 * 60
 
 # Transient OpenAI failures worth retrying (rate-limit / network / 5xx); a retry
 # must never duplicate a Post, hence generation runs before the Post is created.
@@ -77,6 +80,22 @@ def generate_post(self, news_id: str | None) -> str | None:
         return None
 
     structlog.contextvars.bind_contextvars(news_id=news_id)
+    # Single-flight per news_id: worker-default runs at concurrency>1, so two tasks
+    # for the same item (e.g. a double POST /generate) could both pass the idempotency
+    # check below and create duplicate Posts. A short Redis lock collapses that window;
+    # sequential redelivery stays covered by the in-DB idempotency check.
+    gen_lock = f"m4:lock:gen:{news_id}"
+    r = get_redis()
+    if not r.set(gen_lock, "1", nx=True, ex=300):
+        logger.info("generate.locked", news_id=news_id)
+        return None
+    try:
+        return _generate_locked(self, news_id)
+    finally:
+        r.delete(gen_lock)
+
+
+def _generate_locked(self, news_id: str) -> str | None:
     with SessionLocal() as session:
         item = session.get(NewsItem, uuid.UUID(news_id))
         if item is None:
@@ -116,7 +135,9 @@ def generate_post(self, news_id: str | None) -> str | None:
                     "generate.failed", news_id=news_id, reason="retries_exhausted"
                 )
                 return str(post.id)
-            raise self.retry(exc=exc, countdown=2**self.request.retries)
+            # Cap below the broker visibility_timeout (3600s) like publish_post, so a
+            # large backoff can't let Redis redeliver this task mid-wait.
+            raise self.retry(exc=exc, countdown=min(2**self.request.retries, 3000))
         except Exception as exc:  # non-transient generation failure (e.g. refusal)
             post = Post(news_id=item.id, generated_text="", status=PostStatus.new)
             session.add(post)
@@ -370,8 +391,13 @@ def collect_sources() -> None:
     acquired = r.set(LOCK_KEY, "1", nx=True, ex=LOCK_TTL_SECONDS)
     if not acquired:
         return  # previous cycle still running
-    with SessionLocal() as db:
-        sources = db.scalars(select(Source).where(Source.enabled.is_(True))).all()
-        for source in sources:
-            queue = "tg" if source.type == SourceType.tg else "default"
-            parse_source.apply_async((str(source.id),), queue=queue)
+    try:
+        with SessionLocal() as db:
+            sources = db.scalars(select(Source).where(Source.enabled.is_(True))).all()
+            for source in sources:
+                queue = "tg" if source.type == SourceType.tg else "default"
+                parse_source.apply_async((str(source.id),), queue=queue)
+    finally:
+        # Release as soon as enqueuing is done — the lock guards only this brief
+        # orchestration window, not the parse_source tasks it fans out.
+        r.delete(LOCK_KEY)
