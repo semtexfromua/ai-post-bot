@@ -21,7 +21,9 @@ def _format_hashtags(tags: list[str]) -> str:
         out.append(tag)
         if len(out) >= _MAX_HASHTAGS:
             break
-    return " ".join(out)
+    # Escape like the body/URL: hashtags come from the model and must not inject
+    # markup into the HTML parse_mode payload the publisher sends.
+    return " ".join(html.escape(tag) for tag in out)
 
 
 def format_post(draft: PostDraft, news: NewsItem) -> str:

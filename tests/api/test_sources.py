@@ -81,6 +81,15 @@ def test_create_source_rejects_file_scheme(client):
     assert resp.status_code == 422
 
 
+def test_create_source_rejects_internal_ip(client):
+    # SSRF guard at the API edge: blatant internal targets never reach the DB.
+    resp = client.post(
+        "/api/v1/sources",
+        json={"type": "site", "name": "x", "url": "http://127.0.0.1:6379"},
+    )
+    assert resp.status_code == 422
+
+
 def test_create_source_allows_tg_username(client):
     resp = client.post(
         "/api/v1/sources",

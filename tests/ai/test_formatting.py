@@ -37,6 +37,15 @@ def test_format_post_without_url_has_no_link():
     assert out == "Текст без лінка"
 
 
+def test_format_post_escapes_hashtags():
+    # hashtags come from the model; markup must be escaped, not passed through to
+    # the HTML parse_mode payload the publisher sends.
+    draft = PostDraft(text="x", language="uk", hashtags=["<b>inject", "ok"])
+    out = format_post(draft, _news(url=None))
+    assert "<b>" not in out
+    assert "#&lt;b&gt;inject" in out
+
+
 def test_format_post_normalizes_hashtags():
     draft = PostDraft(
         text="x", language="uk", hashtags=["#Python", "machine learning", "", "Python"]

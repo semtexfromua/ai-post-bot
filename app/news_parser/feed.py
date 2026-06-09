@@ -9,6 +9,7 @@ import feedparser
 import structlog
 
 from app.news_parser.base import BaseParser, NewsItemData
+from app.news_parser.ssrf import UnsafeURLError, assert_public_url
 
 if TYPE_CHECKING:
     from app.models.source import Source
@@ -27,6 +28,11 @@ class FeedParser(BaseParser):
     """RSS/Atom parser via feedparser with conditional GET support."""
 
     def fetch(self, source: Source) -> list[NewsItemData]:
+        try:
+            assert_public_url(source.url)
+        except UnsafeURLError as exc:
+            logger.warning("feed.blocked_url", url=source.url, error=str(exc))
+            return []
         _old_timeout = socket.getdefaulttimeout()
         socket.setdefaulttimeout(20)
         try:

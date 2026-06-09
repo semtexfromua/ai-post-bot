@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import field_validator
 
 from app.models.base import SourceType
+from app.news_parser.ssrf import UnsafeURLError, reject_literal_private_ip
 from app.schemas.base import APIModel
 
 _ALLOWED_URL_PREFIXES = ("http://", "https://")
@@ -12,9 +13,15 @@ _ALLOWED_URL_PREFIXES = ("http://", "https://")
 def _validate_source_url(value: str) -> str:
     if value.startswith("@"):
         return value  # telegram @username
-    if value.startswith(_ALLOWED_URL_PREFIXES):
-        return value
-    raise ValueError("url must be an http(s) URL or a @username")
+    if not value.startswith(_ALLOWED_URL_PREFIXES):
+        raise ValueError("url must be an http(s) URL or a @username")
+    # Network-free SSRF guard: reject blatant internal targets at the API edge
+    # (full DNS-based check runs at fetch time in the parsers).
+    try:
+        reject_literal_private_ip(value)
+    except UnsafeURLError as exc:
+        raise ValueError(str(exc)) from exc
+    return value
 
 
 class SourceCreate(APIModel):
