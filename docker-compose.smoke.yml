@@ -1,0 +1,9 @@
+# Temporary smoke override: host 5432/6379 are taken, remap to 5433/6380.
+# !override replaces the base ports list instead of appending to it.
+services:
+  db:
+    ports: !override
+      - "5433:5432"
+  redis:
+    ports: !override
+      - "6380:6379"
