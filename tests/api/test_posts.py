@@ -67,3 +67,9 @@ def test_list_posts_pagination_limit_offset(client, db_session):
 def test_list_posts_limit_over_cap_422(client):
     resp = client.get("/api/v1/posts", params={"limit": 1000})
     assert resp.status_code == 422
+
+
+def test_list_posts_offset_over_cap_422(client):
+    # unbounded offset would force the DB to skip arbitrarily many rows
+    resp = client.get("/api/v1/posts", params={"offset": 5_000_000})
+    assert resp.status_code == 422

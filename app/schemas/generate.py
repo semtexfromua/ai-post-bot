@@ -13,6 +13,8 @@ class GenerateRequest(APIModel):
     def require_news_id_or_text(self) -> "GenerateRequest":
         if self.news_id is None and self.text is None:
             raise ValueError("At least one of 'news_id' or 'text' must be provided")
+        if self.news_id is not None and self.text is not None:
+            raise ValueError("Provide only one of 'news_id' or 'text', not both")
         return self
 
 

@@ -42,6 +42,15 @@ def test_generate_returns_202_and_enqueues(client, db_session):
     delay.assert_called_once_with(str(news.id))
 
 
+def test_generate_rejects_both_news_id_and_text(client, db_session):
+    news = _seed_news(db_session)
+    resp = client.post(
+        "/api/v1/generate",
+        json={"news_id": str(news.id), "text": "both at once"},
+    )
+    assert resp.status_code == 422  # mutually exclusive
+
+
 def test_generate_news_id_404_when_missing(client):
     with patch("app.api.v1.routers.generate.generate_post.delay") as delay:
         resp = client.post("/api/v1/generate", json={"news_id": str(uuid.uuid4())})

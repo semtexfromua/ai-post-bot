@@ -15,7 +15,7 @@ class Pagination:
     def __init__(
         self,
         limit: Annotated[int, Query(ge=1, le=100)] = 20,
-        offset: Annotated[int, Query(ge=0)] = 0,
+        offset: Annotated[int, Query(ge=0, le=1_000_000)] = 0,
     ) -> None:
         self.limit = limit
         self.offset = offset

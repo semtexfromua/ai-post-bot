@@ -19,5 +19,5 @@ class Source(Base):
     etag: Mapped[str | None]
     modified: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(
-        TZDateTime, default=lambda: datetime.now(UTC)
+        TZDateTime, default=lambda: datetime.now(UTC), index=True
     )

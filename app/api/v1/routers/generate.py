@@ -17,7 +17,7 @@ router = APIRouter(prefix="/generate", tags=["generate"])
     status_code=status.HTTP_202_ACCEPTED,
     summary="Ручний запуск генерації",
     description="Ставить таску генерації у чергу (202). Приймає `news_id` наявного "
-    "NewsItem або довільний `text` (створює синтетичний NewsItem, source=\"manual\"). "
+    'NewsItem або довільний `text` (створює синтетичний NewsItem, source="manual"). '
     "Лише генерація, без авто-публікації.",
 )
 def enqueue_generate(payload: GenerateRequest, db: SessionDep) -> GenerateResponse:
