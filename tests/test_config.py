@@ -38,6 +38,17 @@ def test_settings_load_from_env(monkeypatch):
 
 def test_prod_raises_on_empty_secrets(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "prod")
+    # Clear any ambient secrets (CI sets OPENAI_API_KEY/TELEGRAM_* in its env) so
+    # prod validation actually sees them empty and raises.
+    for var in (
+        "OPENAI_API_KEY",
+        "TELEGRAM_API_ID",
+        "TELEGRAM_API_HASH",
+        "TELETHON_STRING_SESSION",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHANNEL_ID",
+    ):
+        monkeypatch.delenv(var, raising=False)
 
     import pytest
 

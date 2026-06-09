@@ -1,3 +1,4 @@
+import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -15,7 +16,9 @@ def test_get_db_yields_session():
 
 
 def test_engine_is_sqlite_with_check_same_thread():
-    # local default DATABASE_URL is sqlite -> connect_args includes check_same_thread
+    # sqlite-specific connect_arg; skip when DATABASE_URL points elsewhere (e.g. CI Postgres)
+    if db.engine.url.get_backend_name() != "sqlite":
+        pytest.skip("DATABASE_URL is not sqlite in this environment")
     assert db.engine.url.get_backend_name() == "sqlite"
     assert (
         db.engine.dialect.create_connect_args(db.engine.url)[1].get("check_same_thread")
