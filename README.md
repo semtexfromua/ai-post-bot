@@ -9,7 +9,7 @@ A service that collects news from RSS/websites and public Telegram channels, fil
 ![Celery](https://img.shields.io/badge/Celery-5.6-37814A?logo=celery&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-206%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-225%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ---
@@ -170,7 +170,7 @@ TELETHON_STRING_SESSION=1BVtsOI8Bu...
 ```bash
 uv sync                                   # install dependencies
 
-uv run pytest -q                          # tests (network-clean: fakeredis, respx, mocks) — 206 passing
+uv run pytest -q                          # tests (network-clean: fakeredis, respx, mocks) — 225 passing
 uv run ruff check                         # linter
 uv run ruff format                        # formatter
 uv run alembic upgrade head               # migrations (SQLite by default)
@@ -358,7 +358,7 @@ The assignment §5 literally requires "publish **via Telethon**". We deliberatel
 
 ## Feature checklist
 
-All assignment M4-1 §5 items are implemented; verified by tests (206, network-clean).
+All assignment M4-1 §5 items are implemented; verified by tests (225, network-clean).
 
 | # | Assignment feature | ✓ | Where (module / test) |
 |---|---|---|---|
@@ -378,6 +378,7 @@ All assignment M4-1 §5 items are implemented; verified by tests (206, network-c
 
 ## Known limitations
 
+- **No API authentication.** The admin API (`/sources`, `/keywords`, `/generate`) is open — auth and rate-limiting are deliberately out of scope for the capstone (see the design-spec anti-patterns list). For production, put it behind a reverse proxy with auth (Bearer / API key) or add `slowapi` rate-limiting. SSRF is already mitigated: source URLs resolving to private/loopback/link-local addresses are rejected both at API validation and at fetch time.
 - **Flower + Celery 5.6.** Flower `2.0.1` has an upstream incompatibility with Celery 5.6: the service connects to the broker, but the web UI on `:5555` hangs. The pipeline is **unaffected** — monitor via logs: `docker compose logs -f worker-default worker-tg beat`. If you need the dashboard, temporarily pin `celery>=5.4,<5.5` or install Flower from git.
 - **Telethon archived (Feb 2026).** Version `1.43.x` is pinned; the code works. If needed, switch to a Codeberg mirror/fork. Don't use `2.0 alpha` (unstable).
 - **Near-dup / SimHash — future work.** **Exact** dedup is implemented (`content_hash` + Redis seen-set). Semantic near-dup needs threshold tuning on real data (risk of false drops).
