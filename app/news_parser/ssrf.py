@@ -69,9 +69,7 @@ def assert_public_url(url: str) -> None:
             raise UnsafeURLError(f"url host resolves to a non-public address: {ip}")
 
 
-def safe_get(
-    url: str, *, timeout: float, headers: dict[str, str]
-) -> httpx.Response:
+def safe_get(url: str, *, timeout: float, headers: dict[str, str]) -> httpx.Response:
     """GET that re-validates SSRF safety on every redirect hop.
 
     httpx's own follow_redirects only validates the first URL, so a 3xx to an

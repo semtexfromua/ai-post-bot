@@ -14,6 +14,7 @@ def _fake_getaddrinfo(host, *a, **k):
     ip = {"example.com": "93.184.216.34"}.get(host, host)
     return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 0))]
 
+
 PAGE_HTML = """<!DOCTYPE html>
 <html>
   <head><title>Breaking: AI does things</title></head>

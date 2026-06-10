@@ -42,4 +42,6 @@ def test_dropped_on_confident_disallowed_language():
 def test_dropped_when_source_disabled():
     # source filter gates before keywords: a keyword match must not save a disabled source
     item = _news("Сьогодні відбулося багато виборів у країні")
-    assert passes_filters(item, [_kw("вибори")], settings, source_enabled=False) is False
+    assert (
+        passes_filters(item, [_kw("вибори")], settings, source_enabled=False) is False
+    )

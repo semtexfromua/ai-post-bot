@@ -27,7 +27,9 @@ def _fake_getaddrinfo(host, *a, **k):
 @respx.mock
 def test_safe_get_returns_response_on_200(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo)
-    respx.get("https://example.com/ok").mock(return_value=httpx.Response(200, text="hi"))
+    respx.get("https://example.com/ok").mock(
+        return_value=httpx.Response(200, text="hi")
+    )
     resp = safe_get("https://example.com/ok", timeout=5.0, headers={})
     assert resp.status_code == 200
     assert resp.text == "hi"
