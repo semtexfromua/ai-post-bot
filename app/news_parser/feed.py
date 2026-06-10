@@ -1,20 +1,22 @@
 from __future__ import annotations
 
 import calendar
-import socket
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import feedparser
+import httpx
 import structlog
 
 from app.news_parser.base import BaseParser, NewsItemData
-from app.news_parser.ssrf import UnsafeURLError, assert_public_url
+from app.news_parser.ssrf import UnsafeURLError, safe_get
 
 if TYPE_CHECKING:
     from app.models.source import Source
 
 logger = structlog.get_logger(__name__)
+
+_TIMEOUT = 20.0
 
 
 def _struct_time_to_utc(parsed_time) -> datetime | None:
@@ -28,32 +30,35 @@ class FeedParser(BaseParser):
     """RSS/Atom parser via feedparser with conditional GET support."""
 
     def fetch(self, source: Source) -> list[NewsItemData]:
+        # Fetch via safe_get (SSRF-safe: re-validates every redirect hop) instead
+        # of letting feedparser resolve/redirect through urllib unchecked. Pass
+        # conditional-GET validators as HTTP headers and parse the bytes locally.
+        headers: dict[str, str] = {}
+        if source.etag:
+            headers["If-None-Match"] = source.etag
+        if source.modified:
+            headers["If-Modified-Since"] = source.modified
         try:
-            assert_public_url(source.url)
+            response = safe_get(source.url, timeout=_TIMEOUT, headers=headers)
         except UnsafeURLError as exc:
             logger.warning("feed.blocked_url", url=source.url, error=str(exc))
             return []
-        _old_timeout = socket.getdefaulttimeout()
-        socket.setdefaulttimeout(20)
-        try:
-            parsed = feedparser.parse(
-                source.url,
-                etag=source.etag,
-                modified=source.modified,
-            )
-        finally:
-            socket.setdefaulttimeout(_old_timeout)
+        except httpx.HTTPError as exc:
+            logger.warning("feed.fetch_error", url=source.url, error=str(exc))
+            return []
 
-        if getattr(parsed, "status", None) == 304:
+        if response.status_code == 304:
             return []
 
         # Persist fresh conditional-GET validators back onto the source.
-        new_etag = getattr(parsed, "etag", None)
+        new_etag = response.headers.get("ETag")
         if new_etag is not None:
             source.etag = new_etag
-        new_modified = getattr(parsed, "modified", None)
+        new_modified = response.headers.get("Last-Modified")
         if new_modified is not None:
             source.modified = new_modified
+
+        parsed = feedparser.parse(response.content)
 
         # Distinguish a malformed-but-readable feed from a down/unreadable one so
         # neither is silent: bozo + entries is a parse warning; bozo + no entries

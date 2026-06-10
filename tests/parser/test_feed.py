@@ -2,6 +2,7 @@ from datetime import UTC
 from unittest.mock import MagicMock, patch
 
 import feedparser
+import httpx
 
 from app.models.base import SourceType
 from app.news_parser.base import NewsItemData
@@ -38,10 +39,14 @@ def _make_source():
     return src
 
 
+def _resp(text=SAMPLE_FEED, status=200, headers=None):
+    body = text.encode() if text else b""
+    return httpx.Response(status, content=body, headers=headers or {})
+
+
 def test_feed_parser_maps_fields_and_utc():
-    parsed = feedparser.parse(SAMPLE_FEED)
     src = _make_source()
-    with patch("app.news_parser.feed.feedparser.parse", return_value=parsed):
+    with patch("app.news_parser.feed.safe_get", return_value=_resp()):
         items = FeedParser().fetch(src)
 
     assert len(items) == 2
@@ -61,30 +66,27 @@ def test_feed_parser_passes_conditional_get_and_persists_validators():
     src.etag = '"old-etag"'
     src.modified = "Mon, 01 Jun 2026 00:00:00 GMT"
 
-    fake_parsed = feedparser.parse(SAMPLE_FEED)
-    fake_parsed.etag = '"new-etag"'
-    fake_parsed.modified = "Mon, 08 Jun 2026 10:00:00 GMT"
-
-    with patch(
-        "app.news_parser.feed.feedparser.parse", return_value=fake_parsed
-    ) as mock_parse:
+    resp = _resp(
+        headers={
+            "ETag": '"new-etag"',
+            "Last-Modified": "Mon, 08 Jun 2026 10:00:00 GMT",
+        }
+    )
+    with patch("app.news_parser.feed.safe_get", return_value=resp) as mock_get:
         FeedParser().fetch(src)
 
-    # conditional GET validators forwarded
-    _, kwargs = mock_parse.call_args
-    assert kwargs.get("etag") == '"old-etag"'
-    assert kwargs.get("modified") == "Mon, 01 Jun 2026 00:00:00 GMT"
-    # new validators stored back on source
+    # conditional GET validators forwarded as HTTP headers
+    _, kwargs = mock_get.call_args
+    assert kwargs["headers"]["If-None-Match"] == '"old-etag"'
+    assert kwargs["headers"]["If-Modified-Since"] == "Mon, 01 Jun 2026 00:00:00 GMT"
+    # new validators stored back on source from the response headers
     assert src.etag == '"new-etag"'
     assert src.modified == "Mon, 08 Jun 2026 10:00:00 GMT"
 
 
 def test_feed_parser_not_modified_returns_empty():
     src = _make_source()
-    not_modified = feedparser.FeedParserDict()
-    not_modified.status = 304
-    not_modified.entries = []
-    with patch("app.news_parser.feed.feedparser.parse", return_value=not_modified):
+    with patch("app.news_parser.feed.safe_get", return_value=_resp("", status=304)):
         items = FeedParser().fetch(src)
     assert items == []
 
@@ -95,6 +97,7 @@ def test_feed_parser_bozo_warns_but_still_parses():
     parsed.bozo_exception = Exception("malformed")
     src = _make_source()
     with (
+        patch("app.news_parser.feed.safe_get", return_value=_resp()),
         patch("app.news_parser.feed.feedparser.parse", return_value=parsed),
         patch("app.news_parser.feed.logger.warning") as mock_warn,
     ):
@@ -112,6 +115,7 @@ def test_feed_parser_down_feed_warns():
     down.entries = []
     src = _make_source()
     with (
+        patch("app.news_parser.feed.safe_get", return_value=_resp()),
         patch("app.news_parser.feed.feedparser.parse", return_value=down),
         patch("app.news_parser.feed.logger.warning") as mock_warn,
     ):
@@ -133,9 +137,8 @@ def test_feed_parser_atom_uses_updated_when_no_published():
         <updated>2026-06-01T18:30:02Z</updated>
       </entry>
     </feed>"""
-    parsed = feedparser.parse(atom)
     src = _make_source()
-    with patch("app.news_parser.feed.feedparser.parse", return_value=parsed):
+    with patch("app.news_parser.feed.safe_get", return_value=_resp(atom)):
         items = FeedParser().fetch(src)
 
     assert len(items) == 1
@@ -145,14 +148,13 @@ def test_feed_parser_atom_uses_updated_when_no_published():
     assert (pub.hour, pub.minute) == (18, 30)
 
 
-def test_feed_parser_missing_pubdate_falls_back_to_now(monkeypatch):
+def test_feed_parser_missing_pubdate_falls_back_to_now():
     no_date_feed = """<?xml version="1.0"?>
     <rss version="2.0"><channel><title>X</title>
     <item><title>No date</title><link>https://example.com/x</link>
     <description>d</description></item></channel></rss>"""
-    parsed = feedparser.parse(no_date_feed)
     src = _make_source()
-    with patch("app.news_parser.feed.feedparser.parse", return_value=parsed):
+    with patch("app.news_parser.feed.safe_get", return_value=_resp(no_date_feed)):
         items = FeedParser().fetch(src)
     assert len(items) == 1
     assert items[0].published_at.tzinfo == UTC
