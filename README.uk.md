@@ -33,7 +33,7 @@
 ## Що вміє сервіс
 
 - 📥 **Збір новин** із RSS/Atom, звичайних сайтів (scrape) та публічних Telegram-каналів (Telethon), кожні 30 хвилин.
-- 🧹 **Фільтрація** за мовою (lingua), ключовими словами з лематизацією (pymorphy3) та дедуплікація (exact `content_hash` + Redis seen-set).
+- 🧹 **Фільтрація** за мовою (lingua), ключовими словами з лематизацією (pymorphy3) та дедуплікація (exact `content_hash` UNIQUE у БД).
 - 🤖 **AI-генерація** україномовного поста зі structured outputs (типізована відповідь, а не сирий текст); лінк на джерело та хештеги додає код, не модель.
 - 📤 **Крапельна публікація** через бот (aiogram): 1 пост за тік із ротацією джерел, щоб канал не «вистрілював» пачкою й не залипав на одному фіді.
 - 🛠 **Керування через REST API** + Swagger (`/docs`): CRUD джерел і ключових слів, історія постів, журнал помилок, ручний запуск генерації.
@@ -53,7 +53,7 @@ flowchart TD
     Parse -->|"новий NewsItem<br/>UNIQUE(content_hash)"| Chain
 
     subgraph Chain["per-item chain · default queue"]
-      Filter["filter_item<br/>dedup · мова · keywords"] --> Gen["generate_post<br/>LLM structured + moderation"]
+      Filter["filter_item<br/>мова · keywords"] --> Gen["generate_post<br/>LLM structured + moderation"]
     end
 
     Gen -->|"Post(status=generated)"| Pool[("ready pool")]
@@ -72,7 +72,7 @@ flowchart TD
 | **worker-default** | RSS/site-парсинг, фільтрація, LLM-генерація | 4 |
 | **worker-tg** | Telethon (читання) + aiogram (публікація) | **1** (один Telethon-клієнт — інакше `AuthKeyDuplicated`) |
 | **beat** | Celery Beat: `collect_sources` (:00/:30) + `publish_next` (:15/:45) | 1 |
-| **redis** | Брокер + result backend + seen-set дедуп + Redis-lock | — |
+| **redis** | Брокер + result backend + Redis-lock | — |
 | **db** | PostgreSQL 16 | — |
 | **flower** | Дашборд черг (`:5555`) — див. [обмеження](#свідомі-обмеження) | — |
 | **migrate** | Одноразовий init: `alembic upgrade head` | — |
@@ -90,7 +90,7 @@ beat :00/:30
             • site/RSS → default queue        • tg → tg queue (Telethon, min_id-інкремент)
             parse: UPSERT NewsItem UNIQUE(content_hash); дубль = no-op
        └─ для кожного НОВОГО NewsItem:  chain( filter_item | generate_post )
-            filter_item   — Redis seen-set дедуп → мова (lingua) → keyword (pymorphy3)
+            filter_item   — мова (lingua) → keyword (pymorphy3)
             generate_post — LLM structured + moderation → Post(status=generated)
             ⮑ публікації тут НЕМАЄ: пост лягає в «ready pool»
 
@@ -139,6 +139,9 @@ docker compose up --build
 > [!TIP]
 > Якщо хост уже зайняв порти `5432`/`6379`, є untracked-оверрайд `docker-compose.smoke.yml` (db → `5433`, redis → `6380`):
 > `docker compose -f docker-compose.yml -f docker-compose.smoke.yml up --build`.
+
+> [!NOTE]
+> Внутрішні сервіси (Postgres/Redis/Flower) слухають лише `127.0.0.1`, а не `0.0.0.0`. Для реального деплою задайте `POSTGRES_PASSWORD` (дефолт — `m4`).
 
 ---
 
@@ -195,7 +198,7 @@ uv run celery -A app.tasks.celery_app flower --port=5555
 |---|---|---|
 | `ENVIRONMENT` | `local` (SQLite, без перевірки секретів) або `prod` (Postgres, fail-fast) | `local` |
 | `DATABASE_URL` | SQLAlchemy DB URL | `sqlite:///./app.db` |
-| `REDIS_URL` | Redis: брокер + backend + seen-set + lock | `redis://localhost:6379/0` |
+| `REDIS_URL` | Redis: брокер + backend + lock | `redis://localhost:6379/0` |
 | 🔑 `OPENAI_API_KEY` | Ключ OpenAI або OpenRouter (SecretStr) | `sk-...` / `sk-or-...` |
 | `OPENAI_MODEL` | Модель генерації (для OpenRouter — id моделі зі structured outputs) | `gpt-4o-mini` |
 | `OPENAI_TIMEOUT` | Таймаут запиту, секунди | `30` |
@@ -207,7 +210,6 @@ uv run celery -A app.tasks.celery_app flower --port=5555
 | 🔑 `TELEGRAM_BOT_TOKEN` | Bot API токен від @BotFather (SecretStr) | `123456:ABC...` |
 | 🔑 `TELEGRAM_CHANNEL_ID` | ID каналу публікації (int, відʼємне) | `-1001234567890` |
 | `ALLOWED_LANGUAGES` | Дозволені мови джерел (вивід завжди українською) | `["uk","en"]` |
-| `DEDUP_TTL_SECONDS` | TTL seen-set у Redis | `604800` (7 днів) |
 | `KEYWORD_MATCH_MODE` | Семантика keyword-фільтра: `any` (OR) / `all` (AND) | `any` |
 | `POST_MAX_LEN` | Жорсткий ліміт довжини поста (символів) | `4096` |
 | `MAX_ITEMS_PER_PARSE` | Макс. items на джерело за парсинг (найновіші) — обмежує backfill | `25` |
@@ -320,8 +322,8 @@ curl "http://localhost:8000/api/v1/errors?stage=publish"   # stage ∈ parse | g
 | AI-генерація з **`asyncio`** (чек-ліст #4) | **Повністю синхронний** стек; `asyncio` лише ізольованими островами | Celery prefork = процеси без event loop ([деталі](#чому-синхронний-стек)) |
 | **OpenAI GPT-4** через публічний API (§3) | Будь-який **OpenAI-сумісний** провайдер (`OPENAI_MODEL`/`OPENAI_BASE_URL`) + **structured outputs**; дефолт `gpt-4o-mini`, тестовано на OpenRouter | гнучкість провайдера/ціни; типізована відповідь надійніша за вільний текст GPT-4 |
 | Простий промпт «емодзі + CTA» (§3) | Розгорнутий україномовний промпт (persona, hook, варіативний CTA, заборонені фрази); **лінк і хештеги додає код**, не модель | стабільніша якість; URL форматує код → модель не галюцинує посилань |
-| Брокер **RabbitMQ або Redis** (§2) | **Redis** (broker + backend + dedup + lock) | один datastore замість двох; `SET NX EX` дає атомарність для dedup і lock «безкоштовно» |
-| Дедуп за **title/url/контентом** (§4) | exact `content_hash` (sha256 нормалізованих title+url) + Redis seen-set; near-dup/SimHash — future | надійний exact-дедуп зараз; семантичний потребує тюнінгу порогу на реальних даних |
+| Брокер **RabbitMQ або Redis** (§2) | **Redis** (broker + backend + lock) | один datastore замість двох; `SET NX EX` дає атомарні локи «безкоштовно» |
+| Дедуп за **title/url/контентом** (§4) | exact `content_hash` (sha256 нормалізованих title+url) UNIQUE у БД; near-dup/SimHash — future | надійний exact-дедуп зараз; семантичний потребує тюнінгу порогу на реальних даних |
 | **Пласка** структура (`app/tasks.py`, `app/models.py`, `app/api/endpoints.py`) | **Шарувата пакетна** (`app/api/v1/routers`, `app/news_parser`, `app/ai`, `app/filter`, `app/tasks/`, `app/models/`) | масштабованість, тестованість, розділення відповідальностей |
 | `requirements.txt` | **uv** + `pyproject.toml` + `uv.lock` | відтворювані білди, швидкий resolver, lock-файл |
 | Модель Post: `published_at`, `status` | + `tg_message_id`, `error`, `created_at`, `news_id` FK | трасування публікації та помилок |
@@ -380,7 +382,7 @@ curl "http://localhost:8000/api/v1/errors?stage=publish"   # stage ∈ parse | g
 
 - **Flower + Celery 5.6.** Реліз Flower `2.0.1` має upstream-несумісність із Celery 5.6: сервіс підключається до брокера, але web-UI на `:5555` зависає. На пайплайн **не впливає** — моніторинг через логи: `docker compose logs -f worker-default worker-tg beat`. Потрібен дашборд — тимчасово запінити `celery>=5.4,<5.5` або взяти Flower із git.
 - **Telethon архівований (лют. 2026).** Версія `1.43.x` запінована; код робочий. За потреби — Codeberg-дзеркало/форк. `2.0 alpha` не брати (нестабільна).
-- **Near-dup / SimHash — future.** Реалізовано **точний** дедуп (`content_hash` + Redis seen-set). Семантичний near-dup потребує тюнінгу порогу на реальних даних (ризик хибних дропів).
+- **Near-dup / SimHash — future.** Реалізовано **точний** дедуп (`content_hash` UNIQUE у БД). Семантичний near-dup потребує тюнінгу порогу на реальних даних (ризик хибних дропів).
 - **ToS Telegram §1.5.** Параграф забороняє агрегацію даних платформи для навчання AI без дозволу — пайплайн «AI-пости зі скрейплених публічних каналів» формально в **сірій зоні** (обмеження стосується READ незалежно від способу публікації). Для навчального капстону толерується; для продакшну потрібна юридична оцінка.
 - **Залишковий ban-ризик юзер-акаунту.** Read-only Telethon знижує ризик, але не до нуля. Мітигація: окремий «розхідний» акаунт, `resolve-once + cache` entity, інкрементальне читання (`min_id`), один клієнт (`worker-tg -c 1`), `StringSession` поза git.
 

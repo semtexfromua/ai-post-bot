@@ -33,7 +33,7 @@ A service that collects news from RSS/websites and public Telegram channels, fil
 ## What it does
 
 - 📥 **News collection** from RSS/Atom, plain websites (scrape), and public Telegram channels (Telethon), every 30 minutes.
-- 🧹 **Filtering** by language (lingua), keywords with lemmatization (pymorphy3), and deduplication (exact `content_hash` + Redis seen-set).
+- 🧹 **Filtering** by language (lingua), keywords with lemmatization (pymorphy3), and deduplication (exact `content_hash` UNIQUE in the DB).
 - 🤖 **AI generation** of a Ukrainian post via structured outputs (a typed response, not raw text); the source link and hashtags are added by code, not the model.
 - 📤 **Drip publishing** through a bot (aiogram): one post per tick with source rotation, so the channel never bursts a batch or gets stuck on a single feed.
 - 🛠 **REST API control** + Swagger (`/docs`): CRUD for sources and keywords, post history, error log, manual generation trigger.
@@ -53,7 +53,7 @@ flowchart TD
     Parse -->|"new NewsItem<br/>UNIQUE(content_hash)"| Chain
 
     subgraph Chain["per-item chain · default queue"]
-      Filter["filter_item<br/>dedup · language · keywords"] --> Gen["generate_post<br/>LLM structured + moderation"]
+      Filter["filter_item<br/>language · keywords"] --> Gen["generate_post<br/>LLM structured + moderation"]
     end
 
     Gen -->|"Post(status=generated)"| Pool[("ready pool")]
@@ -72,7 +72,7 @@ flowchart TD
 | **worker-default** | RSS/site parsing, filtering, LLM generation | 4 |
 | **worker-tg** | Telethon (reading) + aiogram (publishing) | **1** (a single Telethon client — otherwise `AuthKeyDuplicated`) |
 | **beat** | Celery Beat: `collect_sources` (:00/:30) + `publish_next` (:15/:45) | 1 |
-| **redis** | Broker + result backend + dedup seen-set + Redis lock | — |
+| **redis** | Broker + result backend + Redis lock | — |
 | **db** | PostgreSQL 16 | — |
 | **flower** | Queue dashboard (`:5555`) — see [limitations](#known-limitations) | — |
 | **migrate** | One-shot init: `alembic upgrade head` | — |
@@ -90,7 +90,7 @@ beat :00/:30
             • site/RSS → default queue        • tg → tg queue (Telethon, min_id increment)
             parse: UPSERT NewsItem UNIQUE(content_hash); duplicate = no-op
        └─ for each NEW NewsItem:  chain( filter_item | generate_post )
-            filter_item   — Redis seen-set dedup → language (lingua) → keyword (pymorphy3)
+            filter_item   — language (lingua) → keyword (pymorphy3)
             generate_post — LLM structured + moderation → Post(status=generated)
             ⮑ NO publishing here: the post lands in the "ready pool"
 
@@ -139,6 +139,9 @@ docker compose up --build
 > [!TIP]
 > If the host already uses ports `5432`/`6379`, there's an untracked override `docker-compose.smoke.yml` (db → `5433`, redis → `6380`):
 > `docker compose -f docker-compose.yml -f docker-compose.smoke.yml up --build`.
+
+> [!NOTE]
+> Internal services (Postgres/Redis/Flower) bind to `127.0.0.1` only, not `0.0.0.0`. Set `POSTGRES_PASSWORD` for real deployments (defaults to `m4`).
 
 ---
 
@@ -195,7 +198,7 @@ All variables are read from `.env` via `pydantic-settings`. **Required in `prod`
 |---|---|---|
 | `ENVIRONMENT` | `local` (SQLite, no secret checks) or `prod` (Postgres, fail-fast) | `local` |
 | `DATABASE_URL` | SQLAlchemy DB URL | `sqlite:///./app.db` |
-| `REDIS_URL` | Redis: broker + backend + seen-set + lock | `redis://localhost:6379/0` |
+| `REDIS_URL` | Redis: broker + backend + lock | `redis://localhost:6379/0` |
 | 🔑 `OPENAI_API_KEY` | OpenAI or OpenRouter key (SecretStr) | `sk-...` / `sk-or-...` |
 | `OPENAI_MODEL` | Generation model (for OpenRouter — a model id with structured outputs) | `gpt-4o-mini` |
 | `OPENAI_TIMEOUT` | Request timeout, seconds | `30` |
@@ -207,7 +210,6 @@ All variables are read from `.env` via `pydantic-settings`. **Required in `prod`
 | 🔑 `TELEGRAM_BOT_TOKEN` | Bot API token from @BotFather (SecretStr) | `123456:ABC...` |
 | 🔑 `TELEGRAM_CHANNEL_ID` | Publish target channel id (int, negative) | `-1001234567890` |
 | `ALLOWED_LANGUAGES` | Allowed source languages (output is always Ukrainian) | `["uk","en"]` |
-| `DEDUP_TTL_SECONDS` | Redis seen-set TTL | `604800` (7 days) |
 | `KEYWORD_MATCH_MODE` | Keyword filter semantics: `any` (OR) / `all` (AND) | `any` |
 | `POST_MAX_LEN` | Hard post length limit (characters) | `4096` |
 | `MAX_ITEMS_PER_PARSE` | Max items per source per parse (newest) — bounds backfill | `25` |
@@ -330,8 +332,8 @@ The implementation deliberately departs from several prescriptions of the course
 | AI generation with **`asyncio`** (checklist #4) | **Fully synchronous** stack; `asyncio` only in isolated islands | Celery prefork = processes with no event loop ([details](#why-a-synchronous-stack)) |
 | **OpenAI GPT-4** via public API (§3) | Any **OpenAI-compatible** provider (`OPENAI_MODEL`/`OPENAI_BASE_URL`) + **structured outputs**; default `gpt-4o-mini`, tested on OpenRouter | provider/cost flexibility; a typed response is more reliable than GPT-4 free text |
 | Simple "emoji + CTA" prompt (§3) | A detailed Ukrainian prompt (persona, hook, varied CTA, forbidden phrases); **link and hashtags added by code**, not the model | more stable quality; the URL is formatted by code → the model can't hallucinate links |
-| Broker **RabbitMQ or Redis** (§2) | **Redis** (broker + backend + dedup + lock) | one datastore instead of two; `SET NX EX` gives atomic dedup and lock "for free" |
-| Dedup by **title/url/content** (§4) | exact `content_hash` (sha256 of normalized title+url) + Redis seen-set; near-dup/SimHash is future work | reliable exact dedup now; semantic near-dup needs threshold tuning on real data |
+| Broker **RabbitMQ or Redis** (§2) | **Redis** (broker + backend + lock) | one datastore instead of two; `SET NX EX` gives atomic locks "for free" |
+| Dedup by **title/url/content** (§4) | exact `content_hash` (sha256 of normalized title+url) UNIQUE in the DB; near-dup/SimHash is future work | reliable exact dedup now; semantic near-dup needs threshold tuning on real data |
 | **Flat** structure (`app/tasks.py`, `app/models.py`, `app/api/endpoints.py`) | **Layered package** structure (`app/api/v1/routers`, `app/news_parser`, `app/ai`, `app/filter`, `app/tasks/`, `app/models/`) | scalability, testability, separation of concerns |
 | `requirements.txt` | **uv** + `pyproject.toml` + `uv.lock` | reproducible builds, fast resolver, lock file |
 | Post model: `published_at`, `status` | + `tg_message_id`, `error`, `created_at`, `news_id` FK | publish + error traceability |
@@ -388,10 +390,10 @@ All assignment M4-1 §5 items are implemented; verified by tests (225, network-c
 
 ## Known limitations
 
-- **No API authentication.** The admin API (`/sources`, `/keywords`, `/generate`) is open — auth and rate-limiting are deliberately out of scope for the capstone (see the design-spec anti-patterns list). For production, put it behind a reverse proxy with auth (Bearer / API key) or add `slowapi` rate-limiting. SSRF is already mitigated: source URLs resolving to private/loopback/link-local addresses are rejected both at API validation and at fetch time.
+- **No API authentication.** The admin API (`/sources`, `/keywords`, `/generate`) is open — auth and rate-limiting are deliberately out of scope for the capstone (see the design-spec anti-patterns list). For production, put it behind a reverse proxy with auth (Bearer / API key) or add `slowapi` rate-limiting. SSRF is already mitigated: source URLs resolving to private/loopback/link-local addresses are rejected at API validation, at fetch time, and on every redirect hop (so a 3xx to an internal address can't bypass the check).
 - **Flower + Celery 5.6.** Flower `2.0.1` has an upstream incompatibility with Celery 5.6: the service connects to the broker, but the web UI on `:5555` hangs. The pipeline is **unaffected** — monitor via logs: `docker compose logs -f worker-default worker-tg beat`. If you need the dashboard, temporarily pin `celery>=5.4,<5.5` or install Flower from git.
 - **Telethon archived (Feb 2026).** Version `1.43.x` is pinned; the code works. If needed, switch to a Codeberg mirror/fork. Don't use `2.0 alpha` (unstable).
-- **Near-dup / SimHash — future work.** **Exact** dedup is implemented (`content_hash` + Redis seen-set). Semantic near-dup needs threshold tuning on real data (risk of false drops).
+- **Near-dup / SimHash — future work.** **Exact** dedup is implemented (`content_hash` UNIQUE in the DB). Semantic near-dup needs threshold tuning on real data (risk of false drops).
 - **Telegram ToS §1.5.** This clause forbids aggregating platform data to train AI without permission — the "AI posts from scraped public channels" pipeline is formally in a **gray area** (the restriction applies to READ regardless of how you publish). Tolerated for an educational capstone; production use needs a legal review.
 - **Residual user-account ban risk.** Read-only Telethon lowers the risk but not to zero. Mitigations: a separate "throwaway" account, `resolve-once + cache` of the entity, incremental reads (`min_id`), a single client (`worker-tg -c 1`), `StringSession` out of git.
 
