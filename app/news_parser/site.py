@@ -9,7 +9,7 @@ import trafilatura
 from selectolax.lexbor import LexborHTMLParser
 
 from app.news_parser.base import BaseParser, NewsItemData
-from app.news_parser.ssrf import UnsafeURLError, assert_public_url
+from app.news_parser.ssrf import UnsafeURLError, safe_get
 
 if TYPE_CHECKING:
     from app.models.source import Source
@@ -36,17 +36,16 @@ class SiteScraper(BaseParser):
 
     def fetch(self, source: Source) -> list[NewsItemData]:
         try:
-            assert_public_url(source.url)
+            # safe_get re-validates every redirect hop (SSRF guard); a redirect to
+            # an internal address is blocked before the request is made.
+            response = safe_get(
+                source.url,
+                timeout=_TIMEOUT,
+                headers={"User-Agent": "m4-news-bot/1.0"},
+            )
         except UnsafeURLError as exc:
             logger.warning("site.blocked_url", url=source.url, error=str(exc))
             return []
-        try:
-            response = httpx.get(
-                source.url,
-                timeout=_TIMEOUT,
-                follow_redirects=True,
-                headers={"User-Agent": "m4-news-bot/1.0"},
-            )
         except httpx.HTTPError as exc:
             logger.warning("site.fetch_error", url=source.url, error=str(exc))
             return []

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import ipaddress
 import socket
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
+
+import httpx
+
+_MAX_REDIRECTS = 5
 
 
 class UnsafeURLError(ValueError):
@@ -63,3 +67,24 @@ def assert_public_url(url: str) -> None:
         ip = ipaddress.ip_address(info[4][0])
         if _is_blocked_ip(ip):
             raise UnsafeURLError(f"url host resolves to a non-public address: {ip}")
+
+
+def safe_get(
+    url: str, *, timeout: float, headers: dict[str, str]
+) -> httpx.Response:
+    """GET that re-validates SSRF safety on every redirect hop.
+
+    httpx's own follow_redirects only validates the first URL, so a 3xx to an
+    internal address (cloud metadata, Redis) would slip past a one-shot
+    assert_public_url. Here redirects are followed manually and each target is
+    re-checked before the request is made. Returns the final non-redirect
+    response. Raises UnsafeURLError on a non-public hop or too many redirects.
+    """
+    for _ in range(_MAX_REDIRECTS + 1):
+        assert_public_url(url)
+        resp = httpx.get(url, timeout=timeout, headers=headers, follow_redirects=False)
+        location = resp.headers.get("location")
+        if not resp.is_redirect or not location:
+            return resp
+        url = urljoin(str(resp.url), location)
+    raise UnsafeURLError("too many redirects")

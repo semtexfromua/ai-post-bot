@@ -2,7 +2,9 @@ import socket
 import types
 from unittest.mock import patch
 
+import httpx
 import pytest
+import respx
 
 from app.news_parser import feed as feed_module
 from app.news_parser import site as site_module
@@ -12,7 +14,52 @@ from app.news_parser.ssrf import (
     UnsafeURLError,
     assert_public_url,
     reject_literal_private_ip,
+    safe_get,
 )
+
+
+def _fake_getaddrinfo(host, *a, **k):
+    # example.com -> public; literal IPs pass straight through (no network).
+    ip = {"example.com": "93.184.216.34"}.get(host, host)
+    return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 0))]
+
+
+@respx.mock
+def test_safe_get_returns_response_on_200(monkeypatch):
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo)
+    respx.get("https://example.com/ok").mock(return_value=httpx.Response(200, text="hi"))
+    resp = safe_get("https://example.com/ok", timeout=5.0, headers={})
+    assert resp.status_code == 200
+    assert resp.text == "hi"
+
+
+@respx.mock
+def test_safe_get_blocks_redirect_to_private_ip(monkeypatch):
+    # First hop is public, but it 302-redirects to a link-local metadata address.
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo)
+    respx.get("https://example.com/start").mock(
+        return_value=httpx.Response(
+            302, headers={"Location": "http://169.254.169.254/latest/meta-data/"}
+        )
+    )
+    with pytest.raises(UnsafeURLError):
+        safe_get("https://example.com/start", timeout=5.0, headers={})
+
+
+@respx.mock
+def test_safe_get_follows_public_redirect(monkeypatch):
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo)
+    respx.get("https://example.com/start").mock(
+        return_value=httpx.Response(
+            301, headers={"Location": "https://example.com/final"}
+        )
+    )
+    respx.get("https://example.com/final").mock(
+        return_value=httpx.Response(200, text="done")
+    )
+    resp = safe_get("https://example.com/start", timeout=5.0, headers={})
+    assert resp.status_code == 200
+    assert resp.text == "done"
 
 
 def _src(url, name="s"):
