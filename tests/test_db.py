@@ -1,11 +1,21 @@
 import pytest
-from sqlalchemy import text
-from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.core import db
 
 
-def test_get_db_yields_session():
+def test_get_db_yields_session(monkeypatch):
+    # Hermetic: pin SessionLocal to in-memory SQLite so the test exercises the
+    # get_db() contract (yields a working session, closes it) without depending
+    # on an external DATABASE_URL being reachable.
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    monkeypatch.setattr(db, "SessionLocal", sessionmaker(engine, class_=Session))
     gen = db.get_db()
     session = next(gen)
     try:
