@@ -8,7 +8,7 @@ x-app-image: &app-image
 
 x-app-env: &app-env
   ENVIRONMENT: prod
-  DATABASE_URL: postgresql+psycopg://m4:m4@db:5432/m4
+  DATABASE_URL: postgresql+psycopg://m4:${POSTGRES_PASSWORD:-m4}@db:5432/m4
   REDIS_URL: redis://redis:6379/0
   OPENAI_API_KEY: ${OPENAI_API_KEY}
   OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
@@ -25,7 +25,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: m4
-      POSTGRES_PASSWORD: m4
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-m4}
       POSTGRES_DB: m4
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -35,7 +35,8 @@ services:
       timeout: 5s
       retries: 10
     ports:
-      - "5432:5432"
+      # bind to localhost only — the DB is an internal service, not for host exposure
+      - "127.0.0.1:5432:5432"
 
   redis:
     image: redis:7-alpine
@@ -45,7 +46,8 @@ services:
       timeout: 5s
       retries: 10
     ports:
-      - "6379:6379"
+      # bind to localhost only — internal broker, not for host exposure
+      - "127.0.0.1:6379:6379"
 
   migrate:
     <<: *app-image
@@ -139,7 +141,8 @@ services:
     environment:
       <<: *app-env
     ports:
-      - "5555:5555"
+      # bind to localhost only — Flower has no auth; don't expose it on the host
+      - "127.0.0.1:5555:5555"
     depends_on:
       redis:
         condition: service_healthy
