@@ -210,7 +210,7 @@ def filter_item(news_id: str) -> str | None:
         keywords = _load_keywords(session)
         source_enabled = _source_enabled(session, item.source)
         ok = passes_filters(
-            item, keywords, get_redis(), settings, source_enabled=source_enabled
+            item, keywords, settings, source_enabled=source_enabled
         )
         if ok:
             logger.info("filter.passed", news_id=news_id)

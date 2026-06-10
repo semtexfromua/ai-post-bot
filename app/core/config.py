@@ -29,7 +29,6 @@ class Settings(BaseSettings):
     TELEGRAM_CHANNEL_ID: int = 0
 
     ALLOWED_LANGUAGES: list[str] = ["uk", "en"]
-    DEDUP_TTL_SECONDS: int = 604800
     KEYWORD_MATCH_MODE: Literal["any", "all"] = "any"
     POST_MAX_LEN: int = 4096
     # Max items processed per source per parse (newest first). Bounds the first-run
