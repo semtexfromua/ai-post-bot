@@ -2,6 +2,9 @@ import uuid
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
+import pytest
+from celery.exceptions import SoftTimeLimitExceeded
+
 from app.models.base import ErrorStage
 from app.models.error_log import ErrorLog
 from app.models.news_item import NewsItem
@@ -224,6 +227,26 @@ def test_parse_source_concurrent_dup_skipped_batch_not_lost(db_session):
     # Chain enqueued exactly once — for the new item, not the dup.
     assert mock_chain.call_count == 1
     assert mock_chain.return_value.delay.call_count == 1
+
+
+def test_parse_source_soft_time_limit_propagates(db_session):
+    """A soft time limit during fetch must propagate (let Celery kill the task),
+    not be swallowed by the broad except into an ErrorLog(stage=parse)."""
+    src = _seed_source(db_session)
+    fake_parser = MagicMock()
+    fake_parser.fetch.side_effect = SoftTimeLimitExceeded()
+
+    with (
+        patch.object(pipeline, "SessionLocal", return_value=db_session),
+        patch.object(pipeline, "get_parser", return_value=fake_parser),
+        patch.object(pipeline, "chain") as mock_chain,
+    ):
+        with pytest.raises(SoftTimeLimitExceeded):
+            pipeline.parse_source(str(src.id))
+
+    logs = db_session.query(ErrorLog).filter_by(stage=ErrorStage.parse).all()
+    assert len(logs) == 0  # timeout is not a parse failure
+    mock_chain.assert_not_called()
 
 
 def test_parse_source_disabled_source_is_noop(db_session):

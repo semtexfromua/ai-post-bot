@@ -4,7 +4,7 @@ from unittest.mock import patch
 import fakeredis
 import openai
 import pytest
-from celery.exceptions import Retry
+from celery.exceptions import Retry, SoftTimeLimitExceeded
 
 from app.ai import moderation as moderation_module
 from app.ai.schemas import PostDraft
@@ -310,6 +310,42 @@ def test_generate_post_escaped_length_over_limit_marks_failed(db, monkeypatch):
 
     post = db.get(Post, uuid.UUID(post_id))
     assert post.status == PostStatus.failed
+
+
+def test_generate_post_soft_time_limit_in_generate_propagates(db, monkeypatch):
+    """A soft time limit hit during generation must propagate (so Celery can kill
+    the task), not be swallowed into a failed Post — SoftTimeLimitExceeded is an
+    Exception subclass and would otherwise land in the broad except."""
+    item = _persist_news(db)
+    monkeypatch.setattr(pipeline, "SessionLocal", lambda: db_ctx(db))
+    monkeypatch.setattr(
+        pipeline, "build_generator", lambda: _RaisingGen(SoftTimeLimitExceeded())
+    )
+    monkeypatch.setattr(pipeline, "is_flagged", lambda text: False)
+
+    with pytest.raises(SoftTimeLimitExceeded):
+        pipeline.generate_post.run(str(item.id))
+
+    assert db.query(Post).count() == 0  # no failed Post written on timeout
+
+
+def test_generate_post_soft_time_limit_in_moderation_propagates(db, monkeypatch):
+    """Same invariant for a soft time limit hit during the moderation/format guard."""
+    item = _persist_news(db)
+    monkeypatch.setattr(pipeline, "SessionLocal", lambda: db_ctx(db))
+    monkeypatch.setattr(
+        pipeline,
+        "build_generator",
+        lambda: _Gen(PostDraft(text="ok ✅", language="uk")),
+    )
+
+    def _boom(text):
+        raise SoftTimeLimitExceeded()
+
+    monkeypatch.setattr(pipeline, "is_flagged", _boom)
+
+    with pytest.raises(SoftTimeLimitExceeded):
+        pipeline.generate_post.run(str(item.id))
 
 
 def test_is_flagged_skipped_in_fake_mode(monkeypatch):

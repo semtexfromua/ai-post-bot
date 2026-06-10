@@ -14,6 +14,7 @@ from aiogram.exceptions import (
     TelegramServerError,
 )
 from celery import chain
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
@@ -150,6 +151,8 @@ def _generate_locked(self, news_id: str) -> str | None:
             # Cap below the broker visibility_timeout (3600s) like publish_post, so a
             # large backoff can't let Redis redeliver this task mid-wait.
             raise self.retry(exc=exc, countdown=min(2**self.request.retries, 3000))
+        except SoftTimeLimitExceeded:
+            raise  # let Celery kill/retry the task; never a failed Post
         except Exception as exc:  # non-transient generation failure (e.g. refusal)
             post = Post(news_id=item.id, generated_text="", status=PostStatus.new)
             session.add(post)
@@ -180,6 +183,8 @@ def _generate_locked(self, news_id: str) -> str | None:
                 raise ValueError("generated text empty or exceeds POST_MAX_LEN")
             mark_generated(session, post, final_text)
             logger.info("generate.ok", post_id=str(post.id), len=len(final_text))
+        except SoftTimeLimitExceeded:
+            raise  # let Celery kill/retry the task; never a failed Post
         except Exception as exc:  # noqa: BLE001 — log every failure, never raise out
             mark_failed(
                 session,
@@ -337,6 +342,8 @@ def parse_source(source_id: str) -> None:
                 fetched=len(items),
                 new=len(new_ids),
             )
+        except SoftTimeLimitExceeded:
+            raise  # let Celery kill the task; a timeout is not a parse failure
         except Exception as exc:  # noqa: BLE001 — one bad source must not crash the batch
             db.rollback()
             mark_failed(
