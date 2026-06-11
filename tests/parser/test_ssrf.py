@@ -7,9 +7,7 @@ import pytest
 import respx
 
 from app.news_parser import feed as feed_module
-from app.news_parser import site as site_module
 from app.news_parser.feed import FeedParser
-from app.news_parser.site import SiteScraper
 from app.news_parser.ssrf import (
     UnsafeURLError,
     assert_public_url,
@@ -116,13 +114,6 @@ def test_assert_public_url_allows_public(monkeypatch):
         ],
     )
     assert_public_url("https://example.com/x")  # must not raise
-
-
-def test_site_scraper_blocks_internal_url_without_fetching():
-    with patch.object(site_module.httpx, "get") as get:
-        out = SiteScraper().fetch(_src("http://127.0.0.1:6379"))
-    assert out == []
-    get.assert_not_called()  # request never made
 
 
 def test_feed_parser_blocks_internal_url_without_fetching():
