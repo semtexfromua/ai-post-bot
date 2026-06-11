@@ -273,6 +273,37 @@ curl -X DELETE http://localhost:8000/api/v1/sources/{id}       # 204
 </details>
 
 <details>
+<summary><b>Where to find RSS feeds</b> — most sites have one, they just don't advertise it</summary>
+
+**1. Feed autodiscovery** — the feed URL is declared in the page's `<head>`:
+
+```bash
+curl -s https://realpython.com | grep -oiE '<link[^>]*(rss|atom)[^>]*>'
+# <link rel="alternate" type="application/atom+xml" ... href="/atom.xml">
+```
+
+**2. Standard paths** — try them blindly, one usually answers:
+
+| Platform | Feed URL |
+|---|---|
+| Most sites | `/feed`, `/rss`, `/rss.xml`, `/atom.xml`, `/index.xml` |
+| WordPress | `site/feed/` |
+| Medium | `medium.com/feed/@author` |
+| Substack | `name.substack.com/feed` |
+| YouTube | `youtube.com/feeds/videos.xml?channel_id=UC...` |
+| GitHub releases | `github.com/owner/repo/releases.atom` |
+| Reddit | `reddit.com/r/Python/.rss` |
+
+**3. Feed directories** — collect a batch instead of hunting one by one: [Feedly](https://feedly.com) search shows feeds with subscriber counts (a quality signal), Feedspot publishes curated "Top N <topic> RSS feeds" lists, and the [kilimchoi/engineering-blogs](https://github.com/kilimchoi/engineering-blogs) repo is a huge OPML of company engineering blogs.
+
+**4. Filtered firehoses** — high-signal tech feeds that take a query: `hnrss.org/newest?q=python&points=50` (Hacker News), `dev.to/feed/tag/python`, `lobste.rs/t/python.rss`.
+
+**5. No feed at all?** Generators like [RSSHub](https://docs.rsshub.app) or openrss.org build feeds for sites without one — rarely needed in practice.
+
+After adding a source, watch one collect cycle in the logs: a healthy feed logs `parse_source.done fetched=N`, a broken URL logs `feed.bozo` / `feed.unreachable_or_malformed`.
+</details>
+
+<details>
 <summary><b>Keywords</b> — keyword CRUD (<code>/api/v1/keywords</code>)</summary>
 
 ```bash

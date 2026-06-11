@@ -273,6 +273,37 @@ curl -X DELETE http://localhost:8000/api/v1/sources/{id}       # 204
 </details>
 
 <details>
+<summary><b>Де брати RSS-фіди</b> — фід є майже в кожного сайту, його просто не рекламують</summary>
+
+**1. Autodiscovery** — URL фіда прописаний у `<head>` сторінки:
+
+```bash
+curl -s https://realpython.com | grep -oiE '<link[^>]*(rss|atom)[^>]*>'
+# <link rel="alternate" type="application/atom+xml" ... href="/atom.xml">
+```
+
+**2. Стандартні шляхи** — пробуйте наосліп, зазвичай один відповідає:
+
+| Платформа | URL фіда |
+|---|---|
+| Більшість сайтів | `/feed`, `/rss`, `/rss.xml`, `/atom.xml`, `/index.xml` |
+| WordPress | `сайт/feed/` |
+| Medium | `medium.com/feed/@автор` |
+| Substack | `назва.substack.com/feed` |
+| YouTube | `youtube.com/feeds/videos.xml?channel_id=UC...` |
+| GitHub-релізи | `github.com/owner/repo/releases.atom` |
+| Reddit | `reddit.com/r/Python/.rss` |
+
+**3. Каталоги фідів** — щоб назбирати пачку, а не полювати по одному: пошук у [Feedly](https://feedly.com) показує фіди з кількістю підписників (сигнал якості), Feedspot публікує куровані списки «Top N <тема> RSS feeds», а репозиторій [kilimchoi/engineering-blogs](https://github.com/kilimchoi/engineering-blogs) — величезний OPML інженерних блогів компаній.
+
+**4. Фільтровані потоки** — якісні tech-фіди, що приймають запит: `hnrss.org/newest?q=python&points=50` (Hacker News), `dev.to/feed/tag/python`, `lobste.rs/t/python.rss`.
+
+**5. Фіда взагалі нема?** Генератори на кшталт [RSSHub](https://docs.rsshub.app) чи openrss.org будують фід для сайтів без нього — на практиці треба рідко.
+
+Після додавання джерела простежте один цикл збору в логах: здоровий фід пише `parse_source.done fetched=N`, битий URL — `feed.bozo` / `feed.unreachable_or_malformed`.
+</details>
+
+<details>
 <summary><b>Keywords</b> — CRUD ключових слів (<code>/api/v1/keywords</code>)</summary>
 
 ```bash
