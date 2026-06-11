@@ -134,7 +134,10 @@ services:
 
   flower:
     <<: *app-image
-    command: ["celery", "-A", "app.tasks.celery_app", "flower", "--port=5555"]
+    # App-less on purpose: loading the app (-A) imports aiogram, which installs
+    # the uvloop event-loop policy and deadlocks Flower's tornado HTTP loop —
+    # every request then hangs. Monitoring only needs the broker.
+    command: ["celery", "--broker", "redis://redis:6379/0", "flower", "--port=5555"]
     env_file:
       - path: .env
         required: false
