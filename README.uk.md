@@ -137,7 +137,7 @@ docker compose up --build
 > `docker-compose.yml` встановлює `ENVIRONMENT=prod` → вмикається fail-fast валідація `pydantic-settings`: якщо будь-який обовʼязковий секрет порожній, сервіс не стартує й одразу скаже, якого поля бракує.
 
 > [!TIP]
-> Якщо хост уже зайняв порти `5432`/`6379`, є untracked-оверрайд `docker-compose.smoke.yml` (db → `5433`, redis → `6380`):
+> Якщо хост уже зайняв порти `5432`/`6379`, є оверрайд `docker-compose.smoke.yml` (db → `5433`, redis → `6380`):
 > `docker compose -f docker-compose.yml -f docker-compose.smoke.yml up --build`.
 
 > [!NOTE]

@@ -137,7 +137,7 @@ docker compose up --build
 > `docker-compose.yml` sets `ENVIRONMENT=prod`, which enables fail-fast `pydantic-settings` validation: if any required secret is empty, the service won't start and tells you exactly which field is missing.
 
 > [!TIP]
-> If the host already uses ports `5432`/`6379`, there's an untracked override `docker-compose.smoke.yml` (db → `5433`, redis → `6380`):
+> If the host already uses ports `5432`/`6379`, there's an override `docker-compose.smoke.yml` (db → `5433`, redis → `6380`):
 > `docker compose -f docker-compose.yml -f docker-compose.smoke.yml up --build`.
 
 > [!NOTE]
