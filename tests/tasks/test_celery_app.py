@@ -10,6 +10,12 @@ def test_serialization_and_utc():
     assert conf.enable_utc is True
 
 
+def test_no_result_backend():
+    # Results are ignored globally and never read; a configured backend
+    # would only spend Redis memory on dead result keys.
+    assert celery_app.conf.result_backend is None
+
+
 def test_reliability_flags():
     conf = celery_app.conf
     assert conf.task_ignore_result is True

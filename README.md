@@ -72,7 +72,7 @@ flowchart TD
 | **worker-default** | RSS/site parsing, filtering, LLM generation | 4 |
 | **worker-tg** | Telethon (reading) + aiogram (publishing) | **1** (a single Telethon client — otherwise `AuthKeyDuplicated`) |
 | **beat** | Celery Beat: `collect_sources` (:00/:30) + `publish_next` (:15/:45) | 1 |
-| **redis** | Broker + result backend + Redis lock | — |
+| **redis** | Broker + Redis lock | — |
 | **db** | PostgreSQL 16 | — |
 | **flower** | Queue dashboard (`:5555`) — see [limitations](#known-limitations) | — |
 | **migrate** | One-shot init: `alembic upgrade head` | — |

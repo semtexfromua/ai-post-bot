@@ -72,7 +72,7 @@ flowchart TD
 | **worker-default** | RSS/site-парсинг, фільтрація, LLM-генерація | 4 |
 | **worker-tg** | Telethon (читання) + aiogram (публікація) | **1** (один Telethon-клієнт — інакше `AuthKeyDuplicated`) |
 | **beat** | Celery Beat: `collect_sources` (:00/:30) + `publish_next` (:15/:45) | 1 |
-| **redis** | Брокер + result backend + Redis-lock | — |
+| **redis** | Брокер + Redis-lock | — |
 | **db** | PostgreSQL 16 | — |
 | **flower** | Дашборд черг (`:5555`) — див. [обмеження](#свідомі-обмеження) | — |
 | **migrate** | Одноразовий init: `alembic upgrade head` | — |

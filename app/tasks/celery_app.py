@@ -3,10 +3,11 @@ from celery.schedules import crontab
 
 from app.core.config import settings
 
+# No result backend: task_ignore_result=True below and nothing ever reads
+# task results (chains pass values via the message protocol, not the backend).
 celery_app = Celery(
     "m4",
     broker=settings.REDIS_URL,
-    backend=settings.REDIS_URL,
     include=["app.tasks.pipeline"],
 )
 
