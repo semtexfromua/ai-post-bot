@@ -23,6 +23,9 @@ dependencies = [
     "pymorphy3-dicts-ru>=2.4",
     "structlog>=24.4,<25.0",
     "flower>=2.0,<3.0",
+    # flower 2.0.1 never answers HTTP under tornado 6.5 (event loop blocked);
+    # 6.4.x is the last line it works with — drop the pin on the next flower release
+    "tornado>=6.4,<6.5",
     "psycopg[binary]>=3.2,<4.0",
 ]
 
