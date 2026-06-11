@@ -9,7 +9,7 @@ A service that collects news from RSS/websites and public Telegram channels, fil
 ![Celery](https://img.shields.io/badge/Celery-5.6-37814A?logo=celery&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-225%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-235%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ---
@@ -32,7 +32,7 @@ A service that collects news from RSS/websites and public Telegram channels, fil
 
 ## What it does
 
-- 📥 **News collection** from RSS/Atom, plain websites (scrape), and public Telegram channels (Telethon), every 30 minutes.
+- 📥 **News collection** from website RSS/Atom feeds and public Telegram channels (Telethon), every 30 minutes.
 - 🧹 **Filtering** by language (lingua), keywords with lemmatization (pymorphy3), and deduplication (exact `content_hash` UNIQUE in the DB).
 - 🤖 **AI generation** of a Ukrainian post via structured outputs (a typed response, not raw text); the source link and hashtags are added by code, not the model.
 - 📤 **Drip publishing** through a bot (aiogram): one post per tick with source rotation, so the channel never bursts a batch or gets stuck on a single feed.
@@ -147,16 +147,35 @@ docker compose up --build
 
 ## Telegram session (one-time step)
 
-Telethon needs a user session (`StringSession`) to read public channels:
+Telethon needs a user session (`StringSession`) to read public channels.
+
+**1. Get API credentials.** Log in at [my.telegram.org](https://my.telegram.org) → *API development tools* → create an app (any name, platform Desktop). Put the values into `.env` as `TELEGRAM_API_ID` / `TELEGRAM_API_HASH`.
+
+**2. Mint a session — QR login (recommended):**
 
 ```bash
-# Locally:
-uv run python -m scripts.login
+uv run --env-file .env --with qrcode python -m scripts.login_qr
+```
+
+The script renders a QR in the terminal — scan it with the Telegram app (*Settings → Devices → Link Desktop Device*), enter the 2FA password if asked, and it prints a `StringSession`.
+
+<details>
+<summary>Alternative: login-code flow (often broken for fresh api_ids)</summary>
+
+```bash
+uv run --env-file .env python -m scripts.login
 # Or via a throwaway container:
 docker compose run --rm api python -m scripts.login
 ```
 
-The script asks for your phone number, the confirmation code (and the 2FA password if enabled) and prints a `StringSession`. Paste it into `.env`:
+Asks for the phone number, the confirmation code and the 2FA password.
+
+> [!WARNING]
+> For freshly registered `api_id`s Telegram frequently **never delivers the login code**: the API answers `SentCodeTypeApp`, but no message arrives in the app, and `force_sms` has been ignored server-side for years ([Telethon #4730](https://github.com/LonamiWebs/Telethon/issues/4730)). QR login is unaffected — that's why it's the recommended path.
+
+</details>
+
+**3. Paste the session into `.env`:**
 
 ```dotenv
 TELETHON_STRING_SESSION=1BVtsOI8Bu...
@@ -173,7 +192,7 @@ TELETHON_STRING_SESSION=1BVtsOI8Bu...
 ```bash
 uv sync                                   # install dependencies
 
-uv run pytest -q                          # tests (network-clean: fakeredis, respx, mocks) — 225 passing
+uv run pytest -q                          # tests (network-clean: fakeredis, respx, mocks) — 235 passing
 uv run ruff check                         # linter
 uv run ruff format                        # formatter
 uv run alembic upgrade head               # migrations (SQLite by default)
@@ -206,7 +225,7 @@ All variables are read from `.env` via `pydantic-settings`. **Required in `prod`
 | `MODERATION_ENABLED` | Moderation gate; `false` for OpenRouter (no `/moderations`) | `true` |
 | 🔑 `TELEGRAM_API_ID` | Telethon `api_id` from my.telegram.org (int) | `12345678` |
 | 🔑 `TELEGRAM_API_HASH` | Telethon `api_hash` (SecretStr) | `abc123...` |
-| 🔑 `TELETHON_STRING_SESSION` | Reader session (SecretStr), via `scripts/login.py` | `1BVtsOI8...` |
+| 🔑 `TELETHON_STRING_SESSION` | Reader session (SecretStr), via `scripts/login_qr.py` (QR) or `scripts/login.py` | `1BVtsOI8...` |
 | 🔑 `TELEGRAM_BOT_TOKEN` | Bot API token from @BotFather (SecretStr) | `123456:ABC...` |
 | 🔑 `TELEGRAM_CHANNEL_ID` | Publish target channel id (int, negative) | `-1001234567890` |
 | `ALLOWED_LANGUAGES` | Allowed source languages (output is always Ukrainian) | `["uk","en"]` |
@@ -250,7 +269,7 @@ curl -X PATCH http://localhost:8000/api/v1/sources/{id} \
 curl -X DELETE http://localhost:8000/api/v1/sources/{id}       # 204
 ```
 
-> `type` is `site` or `tg`. For `site`, the parser kind (RSS vs scrape) is decided by the URL (`rss`/`feed`/`atom`/`.xml` → RSS, otherwise scrape).
+> `type` is `site` or `tg`. A `site` URL must point to an RSS/Atom feed — there is no HTML-scraper fallback ([why](#deviations-from-the-assignment)).
 </details>
 
 <details>
@@ -334,6 +353,7 @@ The implementation deliberately departs from several prescriptions of the course
 | Simple "emoji + CTA" prompt (§3) | A detailed Ukrainian prompt (persona, hook, varied CTA, forbidden phrases); **link and hashtags added by code**, not the model | more stable quality; the URL is formatted by code → the model can't hallucinate links |
 | Broker **RabbitMQ or Redis** (§2) | **Redis** (broker + backend + lock) | one datastore instead of two; `SET NX EX` gives atomic locks "for free" |
 | Dedup by **title/url/content** (§4) | exact `content_hash` (sha256 of normalized title+url) UNIQUE in the DB; near-dup/SimHash is future work | reliable exact dedup now; semantic near-dup needs threshold tuning on real data |
+| News from **websites** (§1) | **RSS/Atom feeds only** (feedparser); the single-page HTML scraper (trafilatura) was built, verified e2e, then deliberately removed | a one-page scraper yields one item per URL ever (dedup is title+url) and cannot discover a site's new articles without an index crawler; every quality news site ships a feed, so RSS covers "collect from websites" with less code and two fewer dependencies |
 | **Flat** structure (`app/tasks.py`, `app/models.py`, `app/api/endpoints.py`) | **Layered package** structure (`app/api/v1/routers`, `app/news_parser`, `app/ai`, `app/filter`, `app/tasks/`, `app/models/`) | scalability, testability, separation of concerns |
 | `requirements.txt` | **uv** + `pyproject.toml` + `uv.lock` | reproducible builds, fast resolver, lock file |
 | Post model: `published_at`, `status` | + `tg_message_id`, `error`, `created_at`, `news_id` FK | publish + error traceability |
@@ -370,11 +390,11 @@ The assignment §5 literally requires "publish **via Telethon**". We deliberatel
 
 ## Feature checklist
 
-All assignment M4-1 §5 items are implemented; verified by tests (225, network-clean).
+All assignment M4-1 §5 items are implemented; verified by tests (235, network-clean).
 
 | # | Assignment feature | ✓ | Where (module / test) |
 |---|---|---|---|
-| 1 | News collection (sites/RSS) — Celery Beat | ✅ | `app/news_parser/feed.py`, `site.py`; `tests/parser/` |
+| 1 | News collection (sites/RSS) — Celery Beat | ✅ | `app/news_parser/feed.py`; `tests/parser/` |
 | 2 | News collection (Telegram) — Telethon | ✅ | `app/news_parser/telegram_reader.py`; `tests/parser/test_telegram_reader.py` |
 | 3 | Filtering (keyword/language/dedup) | ✅ | `app/filter/`; `tests/filter/` |
 | 4 | AI post generation | ✅ | `app/ai/`, `app/tasks/pipeline.py`; `tests/ai/` |
@@ -393,6 +413,7 @@ All assignment M4-1 §5 items are implemented; verified by tests (225, network-c
 - **No API authentication.** The admin API (`/sources`, `/keywords`, `/generate`) is open — auth and rate-limiting are deliberately out of scope for the capstone (see the design-spec anti-patterns list). For production, put it behind a reverse proxy with auth (Bearer / API key) or add `slowapi` rate-limiting. SSRF is already mitigated: source URLs resolving to private/loopback/link-local addresses are rejected at API validation, at fetch time, and on every redirect hop (so a 3xx to an internal address can't bypass the check).
 - **Flower + Celery 5.6.** Flower `2.0.1` has an upstream incompatibility with Celery 5.6: the service connects to the broker, but the web UI on `:5555` hangs. The pipeline is **unaffected** — monitor via logs: `docker compose logs -f worker-default worker-tg beat`. If you need the dashboard, temporarily pin `celery>=5.4,<5.5` or install Flower from git.
 - **Telethon archived (Feb 2026).** Version `1.43.x` is pinned; the code works. If needed, switch to a Codeberg mirror/fork. Don't use `2.0 alpha` (unstable).
+- **First parse of a `tg` source walks the full history.** A freshly enabled source has an empty `last_seen_msg_id`, so the reader iterates the channel from the very first message (the `MAX_ITEMS_PER_PARSE` cap applies only *after* fetch). Fine for small channels; for large ones prefill `last_seen_msg_id` in the DB (e.g. latest message id − N) before enabling, otherwise expect a long first parse and FloodWait risk.
 - **Near-dup / SimHash — future work.** **Exact** dedup is implemented (`content_hash` UNIQUE in the DB). Semantic near-dup needs threshold tuning on real data (risk of false drops).
 - **Telegram ToS §1.5.** This clause forbids aggregating platform data to train AI without permission — the "AI posts from scraped public channels" pipeline is formally in a **gray area** (the restriction applies to READ regardless of how you publish). Tolerated for an educational capstone; production use needs a legal review.
 - **Residual user-account ban risk.** Read-only Telethon lowers the risk but not to zero. Mitigations: a separate "throwaway" account, `resolve-once + cache` of the entity, incremental reads (`min_id`), a single client (`worker-tg -c 1`), `StringSession` out of git.

@@ -9,7 +9,7 @@
 ![Celery](https://img.shields.io/badge/Celery-5.6-37814A?logo=celery&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-206%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-235%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ---
@@ -32,7 +32,7 @@
 
 ## Що вміє сервіс
 
-- 📥 **Збір новин** із RSS/Atom, звичайних сайтів (scrape) та публічних Telegram-каналів (Telethon), кожні 30 хвилин.
+- 📥 **Збір новин** із RSS/Atom-фідів сайтів та публічних Telegram-каналів (Telethon), кожні 30 хвилин.
 - 🧹 **Фільтрація** за мовою (lingua), ключовими словами з лематизацією (pymorphy3) та дедуплікація (exact `content_hash` UNIQUE у БД).
 - 🤖 **AI-генерація** україномовного поста зі structured outputs (типізована відповідь, а не сирий текст); лінк на джерело та хештеги додає код, не модель.
 - 📤 **Крапельна публікація** через бот (aiogram): 1 пост за тік із ротацією джерел, щоб канал не «вистрілював» пачкою й не залипав на одному фіді.
@@ -147,16 +147,35 @@ docker compose up --build
 
 ## Telegram-сесія (одноразовий крок)
 
-Telethon потребує юзер-сесії (`StringSession`) для читання публічних каналів:
+Telethon потребує юзер-сесії (`StringSession`) для читання публічних каналів.
+
+**1. Отримайте API-credentials.** Залогіньтесь на [my.telegram.org](https://my.telegram.org) → *API development tools* → створіть додаток (назва будь-яка, платформа Desktop). Запишіть значення в `.env` як `TELEGRAM_API_ID` / `TELEGRAM_API_HASH`.
+
+**2. Змінтіть сесію — QR-логін (рекомендовано):**
 
 ```bash
-# Локально:
-uv run python -m scripts.login
+uv run --env-file .env --with qrcode python -m scripts.login_qr
+```
+
+Скрипт намалює QR у терміналі — відскануйте його додатком Telegram (*Налаштування → Пристрої → Підключити пристрій*), введіть 2FA-пароль, якщо запитає, і він виведе `StringSession`.
+
+<details>
+<summary>Альтернатива: логін через код (для свіжих api_id часто не працює)</summary>
+
+```bash
+uv run --env-file .env python -m scripts.login
 # Або через тимчасовий контейнер:
 docker compose run --rm api python -m scripts.login
 ```
 
-Скрипт запитає номер телефону, код підтвердження (і 2FA-пароль, якщо ввімкнений) і виведе `StringSession`. Вставте його у `.env`:
+Запитає номер телефону, код підтвердження і 2FA-пароль.
+
+> [!WARNING]
+> Для щойно зареєстрованих `api_id` Telegram часто **взагалі не доставляє код логіну**: API відповідає `SentCodeTypeApp`, але повідомлення в додаток не приходить, а `force_sms` сервер ігнорує вже роками ([Telethon #4730](https://github.com/LonamiWebs/Telethon/issues/4730)). QR-логіну це не стосується — тому він і рекомендований.
+
+</details>
+
+**3. Вставте сесію у `.env`:**
 
 ```dotenv
 TELETHON_STRING_SESSION=1BVtsOI8Bu...
@@ -173,7 +192,7 @@ TELETHON_STRING_SESSION=1BVtsOI8Bu...
 ```bash
 uv sync                                   # встановити залежності
 
-uv run pytest -q                          # тести (мережево-чисті: fakeredis, respx, моки) — 206 passing
+uv run pytest -q                          # тести (мережево-чисті: fakeredis, respx, моки) — 235 passing
 uv run ruff check                         # лінтер
 uv run ruff format                        # форматування
 uv run alembic upgrade head               # міграції (за замовч. SQLite)
@@ -206,7 +225,7 @@ uv run celery -A app.tasks.celery_app flower --port=5555
 | `MODERATION_ENABLED` | Гейт модерації; `false` для OpenRouter (немає `/moderations`) | `true` |
 | 🔑 `TELEGRAM_API_ID` | Telethon `api_id` з my.telegram.org (int) | `12345678` |
 | 🔑 `TELEGRAM_API_HASH` | Telethon `api_hash` (SecretStr) | `abc123...` |
-| 🔑 `TELETHON_STRING_SESSION` | Сесія читача (SecretStr), `scripts/login.py` | `1BVtsOI8...` |
+| 🔑 `TELETHON_STRING_SESSION` | Сесія читача (SecretStr), `scripts/login_qr.py` (QR) або `scripts/login.py` | `1BVtsOI8...` |
 | 🔑 `TELEGRAM_BOT_TOKEN` | Bot API токен від @BotFather (SecretStr) | `123456:ABC...` |
 | 🔑 `TELEGRAM_CHANNEL_ID` | ID каналу публікації (int, відʼємне) | `-1001234567890` |
 | `ALLOWED_LANGUAGES` | Дозволені мови джерел (вивід завжди українською) | `["uk","en"]` |
@@ -250,7 +269,7 @@ curl -X PATCH http://localhost:8000/api/v1/sources/{id} \
 curl -X DELETE http://localhost:8000/api/v1/sources/{id}       # 204
 ```
 
-> `type` — `site` або `tg`. Для `site` тип парсера (RSS vs scrape) визначається за URL (`rss`/`feed`/`atom`/`.xml` → RSS, інакше — scrape).
+> `type` — `site` або `tg`. URL для `site` має вказувати на RSS/Atom-фід — HTML-скрейпера немає ([чому](#відхилення-від-тз)).
 </details>
 
 <details>
@@ -324,6 +343,7 @@ curl "http://localhost:8000/api/v1/errors?stage=publish"   # stage ∈ parse | g
 | Простий промпт «емодзі + CTA» (§3) | Розгорнутий україномовний промпт (persona, hook, варіативний CTA, заборонені фрази); **лінк і хештеги додає код**, не модель | стабільніша якість; URL форматує код → модель не галюцинує посилань |
 | Брокер **RabbitMQ або Redis** (§2) | **Redis** (broker + backend + lock) | один datastore замість двох; `SET NX EX` дає атомарні локи «безкоштовно» |
 | Дедуп за **title/url/контентом** (§4) | exact `content_hash` (sha256 нормалізованих title+url) UNIQUE у БД; near-dup/SimHash — future | надійний exact-дедуп зараз; семантичний потребує тюнінгу порогу на реальних даних |
+| Новини **із сайтів** (§1) | **лише RSS/Atom-фіди** (feedparser); односторінковий HTML-скрейпер (trafilatura) був реалізований, перевірений e2e і свідомо видалений | скрейпер однієї сторінки дає один item на URL назавжди (дедуп — title+url) і не вміє знаходити нові статті сайту без індекс-краулера; кожен якісний новинний сайт має фід, тож RSS покриває «збір із сайтів» меншим кодом і мінус дві залежності |
 | **Пласка** структура (`app/tasks.py`, `app/models.py`, `app/api/endpoints.py`) | **Шарувата пакетна** (`app/api/v1/routers`, `app/news_parser`, `app/ai`, `app/filter`, `app/tasks/`, `app/models/`) | масштабованість, тестованість, розділення відповідальностей |
 | `requirements.txt` | **uv** + `pyproject.toml` + `uv.lock` | відтворювані білди, швидкий resolver, lock-файл |
 | Модель Post: `published_at`, `status` | + `tg_message_id`, `error`, `created_at`, `news_id` FK | трасування публікації та помилок |
@@ -360,11 +380,11 @@ curl "http://localhost:8000/api/v1/errors?stage=publish"   # stage ∈ parse | g
 
 ## Чек-лист функціональності
 
-Усі пункти ТЗ M4-1 §5 реалізовано; верифікація — тестами (206, network-clean).
+Усі пункти ТЗ M4-1 §5 реалізовано; верифікація — тестами (235, network-clean).
 
 | # | Функція ТЗ | ✓ | Де (модуль / тест) |
 |---|---|---|---|
-| 1 | Збір новин (сайти/RSS) — Celery Beat | ✅ | `app/news_parser/feed.py`, `site.py`; `tests/parser/` |
+| 1 | Збір новин (сайти/RSS) — Celery Beat | ✅ | `app/news_parser/feed.py`; `tests/parser/` |
 | 2 | Збір новин (Telegram) — Telethon | ✅ | `app/news_parser/telegram_reader.py`; `tests/parser/test_telegram_reader.py` |
 | 3 | Фільтрація (keyword/мова/dedup) | ✅ | `app/filter/`; `tests/filter/` |
 | 4 | AI-генерація постів | ✅ | `app/ai/`, `app/tasks/pipeline.py`; `tests/ai/` |
@@ -382,6 +402,7 @@ curl "http://localhost:8000/api/v1/errors?stage=publish"   # stage ∈ parse | g
 
 - **Flower + Celery 5.6.** Реліз Flower `2.0.1` має upstream-несумісність із Celery 5.6: сервіс підключається до брокера, але web-UI на `:5555` зависає. На пайплайн **не впливає** — моніторинг через логи: `docker compose logs -f worker-default worker-tg beat`. Потрібен дашборд — тимчасово запінити `celery>=5.4,<5.5` або взяти Flower із git.
 - **Telethon архівований (лют. 2026).** Версія `1.43.x` запінована; код робочий. За потреби — Codeberg-дзеркало/форк. `2.0 alpha` не брати (нестабільна).
+- **Перший парсинг `tg`-джерела проходить усю історію.** У щойно увімкненого джерела `last_seen_msg_id` порожній, тож reader ітерує канал від найпершого повідомлення (кеп `MAX_ITEMS_PER_PARSE` застосовується вже *після* fetch). Для малих каналів — ок; для великих перед увімкненням префільте `last_seen_msg_id` у БД (наприклад, id останнього повідомлення − N), інакше довгий перший парсинг і ризик FloodWait.
 - **Near-dup / SimHash — future.** Реалізовано **точний** дедуп (`content_hash` UNIQUE у БД). Семантичний near-dup потребує тюнінгу порогу на реальних даних (ризик хибних дропів).
 - **ToS Telegram §1.5.** Параграф забороняє агрегацію даних платформи для навчання AI без дозволу — пайплайн «AI-пости зі скрейплених публічних каналів» формально в **сірій зоні** (обмеження стосується READ незалежно від способу публікації). Для навчального капстону толерується; для продакшну потрібна юридична оцінка.
 - **Залишковий ban-ризик юзер-акаунту.** Read-only Telethon знижує ризик, але не до нуля. Мітигація: окремий «розхідний» акаунт, `resolve-once + cache` entity, інкрементальне читання (`min_id`), один клієнт (`worker-tg -c 1`), `StringSession` поза git.
